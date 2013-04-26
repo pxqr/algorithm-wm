@@ -14,7 +14,7 @@ import AST
 import Module
 
 encloseP :: Parser c -> Parser b -> Parser a -> Parser a
-encloseP p q a = do { p; r <- a; q; return r } 
+encloseP p q a = do { p; r <- a; q; return r }
 
 inSpaces :: Parser a -> Parser a
 inSpaces = encloseP skipSpace skipSpace
@@ -30,9 +30,9 @@ keywords = ["let", "in", "end", "case", "of"]
 
 class Parsable p where
   parser :: Parser p
-  
+
 nameP :: Parser Name
-nameP = do n <- (:) <$> P.letter <*> many (P.letter <|> P.digit) <?> "name" 
+nameP = do n <- (:) <$> P.letter <*> many (P.letter <|> P.digit) <?> "name"
            when (n `elem` keywords) $ do
              fail "keyword is not valid name"
            return n
@@ -49,7 +49,7 @@ arrowP :: Parser ()
 arrowP = skipSpace >> P.string "->" >> skipSpace
 
 litP :: Parser Literal
-litP = choice 
+litP = choice
        [ LitInt  <$> P.signed P.decimal
        , LitChar <$> (P.char '\'' *> P.anyChar <* P.char '\'')
        ]
@@ -72,7 +72,7 @@ altsP = inBraces (altP `P.sepBy1` inSpaces (P.char ';'))
 expP :: Parser Exp
 expP = foldApp <$> (lex `P.sepBy1` skipSpace) <?> "expr"
     where
-      lex = choice 
+      lex = choice
             [ Bot <$  P.string "_|_"
             , Lit <$> litP
             , Let <$> ("let" .*> inSpaces nameP)
@@ -84,14 +84,14 @@ expP = foldApp <$> (lex `P.sepBy1` skipSpace) <?> "expr"
             , Abs <$> ("\\" .*> inSpaces nameP  <*. ".")
                   <*> (skipSpace *> expP)
             , inParens expP
-            ] 
+            ]
 
       foldApp = foldl1 App
 
 tyP :: Parser Ty
 tyP = foldArr <$> (lex `P.sepBy1` skipSpace) <?> "type"
     where
-      lex = choice 
+      lex = choice
             [ litArr <$ P.string "->"
             , LitT   <$> tyLitP
             , VarT   <$> nameP
@@ -104,17 +104,17 @@ tyP = foldArr <$> (lex `P.sepBy1` skipSpace) <?> "type"
       isArr _           = False
 
       litArr = LitT "->"
-      
+
 schemeP :: Parser (Scheme Ty)
-schemeP = choice 
-          [ Poly <$> ("forall" .*> inSpaces nameP <*. ".") 
+schemeP = choice
+          [ Poly <$> ("forall" .*> inSpaces nameP <*. ".")
                  <*> (skipSpace *> schemeP)
           , Mono <$> tyP
           ] <?> "type scheme"
 
 kindP :: Bool -> Parser Kind
-kindP lft = choice 
-        [ do when lft $ do fail "left" 
+kindP lft = choice
+        [ do when lft $ do fail "left"
              ArrK <$> kindP True <*> (arrowP *> kindP False)
         , Star <$  P.char '*'
         , inParens (kindP False)
@@ -122,19 +122,19 @@ kindP lft = choice
 
 decP :: Parser Dec
 decP = choice
-       [ DataD <$> ("data" .*> inSpaces nameP <*. colon) 
+       [ DataD <$> ("data" .*> inSpaces nameP <*. colon)
                <*> (skipSpace *> kindP False)
-       , SigD  <$> (nameP <* inSpaces ":")
+       , SigD  <$> (nameP <* inSpaces (P.char ':'))
                <*> schemeP
        , FunD  <$> (nameP <* skipSpace)
                <*> (nameP `P.sepBy` skipSpace)
-               <*> (inSpaces "=" *> expP)
+               <*> (inSpaces (P.char '=') *> expP)
        ] <?> "declaration"
     where
       colon = ":"
 
 moduleP :: Parser Module
-moduleP = Module <$> many (decP <* (skipSpace >> P.char ';' >> skipSpace)) 
+moduleP = Module <$> many (decP <* (skipSpace >> P.char ';' >> skipSpace))
                  <* endOfInput
 
 parseModule :: Text  -> Either String Module
