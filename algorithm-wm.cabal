@@ -1,0 +1,46 @@
+name:                algorithm-wm
+version:             0.1.0.0
+license:             MIT
+license-file:        LICENSE
+author:              Sam T.
+maintainer:          Sam T. <pxqr.sta@gmail.com>
+build-type:          Simple
+cabal-version:       >=1.8
+category:            Language
+synopsis:            Algorithm W versus algorithm M comparison.
+description:         Algorithm W versus algorithm M comparison.
+
+source-repository head
+  type:     git
+  location: https://github.com/pxqr/algorithm-wm.git
+
+executable algorithm-wm
+  main-is:           Main.hs
+  other-modules:
+      AST
+    , Eval
+    , Loc
+    , Module
+    , Name
+    , Parser
+    , TC
+    , TyError
+    , Unify
+
+  build-depends:
+      attoparsec
+    , base       == 4.*
+    , mtl        == 2.*
+    , ghc        == 7.4.*
+    , containers == 0.4.*
+    , vector     == 0.9.*
+    , text       == 0.11.*
+    , directory  == 1.1.*
+    , split
+    , ansi-wl-pprint
+    , ansi-terminal
+    , hinotify
+
+  hs-source-dirs:    src
+
+  extensions:        PatternGuards
