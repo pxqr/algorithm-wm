@@ -1,6 +1,6 @@
 module Parser where
 
-import Control.Applicative hiding (many)
+import Control.Applicative hiding (many, (<|>))
 import Control.Monad.Identity
 import Control.Monad.State as M
 import Data.Char
@@ -140,12 +140,15 @@ modNameP :: Parser ModName
 modNameP = ModName <$> nameP
 
 instance Expr Ty where
-  expr = fmap (L.foldl1 AppT) $ some $ indented >> exprPrec "type"
-    [ [Infix (op "->" >> return (.->)) AssocRight]
-    ]
-    [ LitT <$> tyLitP
-    , VarT <$> tyVarP
-    ]
+  expr = indented >> exprPrec "type"
+      [ [Infix (op "->" >> return (.->)) AssocRight] ]
+      [apps]
+
+   where
+    apps = fmap (L.foldl1 AppT) $ some $ indented >> exprPrec "type" []
+           [ LitT <$> tyLitP
+           , VarT <$> tyVarP
+           ]
 
 instance Expr Kind where
   expr = exprPrec "kind"
@@ -166,8 +169,9 @@ instance Expr Dec where
     [ SigD  <$> (nameP <*  sym ":") <*> schemeP
     , FunD  <$>  nameP <*> many nameP  <*> (sym "=" *> expr)
     , DataD <$> (sym "data" *> nameP)
-            <*> (sym ":"    *> expr  <* sym "where")
-            <*> block conP
+            <*> (sym ":"    *> expr)
+            <*> (try (sym "where" *> block conP) <|> pure [])
+
     ]
    where
      conP = (,) <$> nameP <*> (sym ":" *> expr)

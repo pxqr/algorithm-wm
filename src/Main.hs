@@ -3,6 +3,7 @@
 module Main where
 
 import Control.Applicative
+import Control.Arrow (second)
 import Control.Monad.State
 import Control.Monad.Reader
 import Control.Monad.Error
@@ -84,6 +85,12 @@ checkModule m = do
     groupDec [] = return []
 
 
+    checkCon env (n, hsc) = do
+          runTI env $ do
+            sc <- freshInst hsc >>= generalizeM
+            ty <- freshInst sc
+            isSaturated ty
+            return (n, sc)
 
 
     checkNames :: [[Dec]] -> Result ()
@@ -92,11 +99,12 @@ checkModule m = do
          checkName s n | n `S.member` s = throwError (RedefineE n)
                        |    otherwise   = return (S.insert n s)
 
-    checkDec :: TyEnv -> [Dec] -> Result TyEnv
-    checkDec env [DataD n k cons]  = do
-      return ((n, HasKind k) : env)
-      where
 
+    checkDec :: TyEnv -> [Dec] -> Result TyEnv
+    checkDec e [DataD n k cons]  = do
+        let env = (n, HasKind k) : e
+        cons' <- mapM (checkCon env) cons
+        return (map (second HasType) cons' ++ env)
 
     checkDec env [SigD n sc, FunD _ ps e] = do
       ty <- runTI env $ do

@@ -22,6 +22,9 @@ data Module = Module {
   }
 
 instance Pretty Dec where
+    pretty (DataD n k []) =
+      yellow "data" <+> underline (magenta (text n)) <+> colon <+> pretty k
+
     pretty (DataD n k cds) =
       yellow "data" <+> underline (magenta (text n)) <+> colon <+> pretty k <+>
             "where" <>linebreak <>

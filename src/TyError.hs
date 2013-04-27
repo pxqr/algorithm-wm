@@ -33,6 +33,7 @@ data TyError = UnificationE (UFailure Ty)
              | RedefineE    Name
              | ConArityMismatchE [Exp]
              | StrMsg String
+               deriving Show
 
 instance Error TyError where
     noMsg  = StrMsg "<unknown error>"
@@ -58,6 +59,7 @@ instance Pretty TyError where
                                  "in type:" <+> pretty t
 
     pretty (StrMsg s)           = red (text s)
+    pretty msg = red (text (show msg))
 
 stringError :: MonadError TyError m => String -> m a
 stringError = throwError . StrMsg

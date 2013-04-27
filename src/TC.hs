@@ -26,7 +26,7 @@ type Result = Either TyError
 type Index = Int
 type Context t = ReaderT TyEnv (StateT Index (UnifierM t Result))
 
-generalizeM :: Term a Ty => a -> Context a (Scheme a)
+generalizeM :: Term a Ty => a -> Context t (Scheme a)
 generalizeM ty = generalize ty . S.fromList . map fst <$> tyEnv
 
 substTyEnv :: TyEnv -> Subst Ty  -> TyEnv
@@ -57,15 +57,15 @@ fresh = do
   modify succ
   return ('v' : show i)
 
-freshTyVar :: Context t Ty
-freshTyVar = VarT <$> fresh
+freshVar :: Term a b => Context t a
+freshVar = var <$> fresh
 
-freshInst :: Term a Ty => Scheme a -> Context t a
+freshInst :: Term a a => Scheme a -> Context t a
 freshInst = go []
   where
     go s (Mono t)   = return (subst t s)
     go s (Poly n t) = do
-      f <- freshTyVar
+      f <- freshVar
       go ((n, f) : s) t
 
 bindLocal :: Name -> Scheme Ty -> Context t a -> Context t a
@@ -115,7 +115,7 @@ tyProjPat _  _  WildP      = return []
 tyProjPat _  t (VarP n)    = return [(n, t)]
 tyProjPat es t (ConP n names) = do
   conTy <- lookupVar es n >>= freshInst
-  fiTys <- freshTyVar
+  fiTys <- freshVar
   withU $ do
     unify conTy (fiTys .-> t)
     ts <- unfoldArr <$> reify fiTys
@@ -135,13 +135,13 @@ tyInfW = tyInf []
     where
       tyInf es e = go (e : es) e
 
-      go _   Bot    = freshTyVar
+      go _   Bot    = freshVar
 
       -- TODO: keep zipper of Exp in context env
       go _  (Lit l) = return (tyInfLit l)
       go es (Var n) = lookupVar es n >>= freshInst
       go es (Abs n e) = do
-        t  <- freshTyVar
+        t  <- freshVar
         t2 <- bindLocal n (Mono t) (tyInf es e)
         t1 <- withU $ do reify t
         return (t1 .-> t2)
@@ -149,7 +149,7 @@ tyInfW = tyInf []
       go es (App e1 e2) = do
         t1 <- tyInf es e1
         t2 <- substLocal (tyInf es e2)
-        f  <- freshTyVar
+        f  <- freshVar
         withU $ do
           t1' <- reify t1
           unify t1' (t2 .-> f)
@@ -161,7 +161,7 @@ tyInfW = tyInf []
           s1 <- generalizeM t1
           bindLocal n s1 $ tyInf es e2
 
-      go es (Case e1 alts) = do freshTyVar -- TODO: handle polymorphism properly
+      go es (Case e1 alts) = do freshVar -- TODO: handle polymorphism properly
 {-        t1 <- tyInf es e1
         ts <- forM alts $ uncurry (tyInfAlt t1)
         tyAltsAgree ts
@@ -190,3 +190,38 @@ withDef :: Context t a -> Context t a
 withDef = bindLocal border err
     where
       err = error "don't use ty of border"
+
+
+type TyVarEnv = Subst Kind
+
+kdInf :: Ty -> Context Kind Kind
+kdInf (LitT n) = lookupTyLit n
+kdInf (VarT n) = lookupTyVar n
+kdInf (AppT t1 t2) = do
+  k1 <- kdInf t1
+  k2 <- kdInf t2
+  k <- freshVar
+  withUKd $ do
+    unifyKd k1 (k2 `ArrK` k)
+    reify k
+
+kdInf (AbsT n t  ) = do error "kdInf"
+--  k1 <- freshKdVar
+--  k2 <- bindLocal n (Mono k1) (kdInf t)
+
+kdChk :: Ty -> Kind -> Context Kind ()
+kdChk t ke = do
+  ka <- kdInf t
+  spec <- withUKd $ do
+    unifyKd ke ka
+    ke' <- reify ke
+    return (ka == ke)
+
+  unless spec $ do
+    throwError (KindMismatchE ka ke t)
+  return ()
+
+isSaturated :: Ty -> Context Kind ()
+isSaturated t = do
+  k <- kdInf t
+  when (k /= Star) $ throwError (KindMismatchE k Star t)

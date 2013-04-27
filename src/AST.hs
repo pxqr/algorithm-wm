@@ -62,11 +62,13 @@ infixr 5 .->
 type Subst t = [(Name, t)]
 
 class Term t t' | t -> t' where
+  var :: Name -> t
   freeVars :: t -> Set Name
-
   subst :: t -> Subst t' -> t
 
+
 instance Term Exp Exp where
+  var   = Var
   freeVars (Var n) = S.singleton n
   freeVars (App e1 e2) = freeVars e1 <> freeVars e2
   freeVars (Abs n  e ) = n `S.delete` freeVars e
@@ -74,7 +76,9 @@ instance Term Exp Exp where
 
   subst = error "Term Exp Exp"
 
+
 instance Term Ty Ty where
+  var = VarT
   freeVars (LitT _) = S.empty
   freeVars (VarT n) = S.singleton n
   freeVars (AppT t1 t2) = freeVars t1 <> freeVars t2
@@ -85,6 +89,7 @@ instance Term Ty Ty where
   subst   (AppT t1 t2) s = AppT (subst t1 s) (subst t2 s)
 
 instance Term Kind Kind where
+  var = VarK
   freeVars  Star    = S.empty
   freeVars (VarK n) = S.singleton n
   freeVars (ArrK k1 k2) = freeVars k1 <> freeVars k2
@@ -95,6 +100,7 @@ instance Term Kind Kind where
   subst   (ArrK k1 k2) s = ArrK (subst k1 s) (subst k2 s)
 
 instance Term a a => Term (Scheme a) a where
+--  var = Mono . var
   freeVars (Mono t)   = freeVars t
   freeVars (Poly n p) = n `S.delete` freeVars p
 

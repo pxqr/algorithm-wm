@@ -18,6 +18,7 @@ data UFailure t = LitMismatchE Name Name UTrace
                 | OccChkFailE  Name t    UTrace
                 | UFailureE    t    t    UTrace
                 | UStrMsgE     String
+                  deriving Show
 
 instance Error (UFailure t) where
   noMsg  = UStrMsgE "unknown unification failure"
