@@ -1,141 +1,183 @@
-{-# LANGUAGE OverloadedStrings #-}
-module Parser (parseModule) where
+module Parser where
 
-import Control.Applicative
-import Control.Monad
+import Control.Applicative hiding (many)
+import Control.Monad.Identity
+import Control.Monad.State as M
+import Data.Maybe
+import Data.List as L
+import Data.Map as M
+import Text.Parsec as P
+import Text.Parsec.Language
+import Text.Parsec.Token
+import Text.Parsec.Expr
+import Text.Parsec.Indent
 
-import Data.Char
-import qualified Data.List.Split as L
-import Data.Text (Text)
-import qualified Data.Attoparsec.Text as P
-import Data.Attoparsec.Text (Parser, (<?>), (.*>), (<*.), skipSpace, choice, endOfLine, endOfInput)
-
-import AST
 import Module
+import AST
+import Name
 
-encloseP :: Parser c -> Parser b -> Parser a -> Parser a
-encloseP p q a = do { p; r <- a; q; return r }
+strKeywords :: [String]
+strKeywords = [ "let",  "in", "end"
+           , "case", "of", "end"
+           , "data"
+           ]
 
-inSpaces :: Parser a -> Parser a
-inSpaces = encloseP skipSpace skipSpace
+opKeywords :: [String]
+opKeywords = [".", "=", ":", "\\"]
 
-inParens :: Parser a -> Parser a
-inParens p =  "(" .*> skipSpace *> p <* skipSpace <*. ")"
+operatorChars :: String
+operatorChars = "<>"
 
-inBraces :: Parser a -> Parser a
-inBraces = encloseP (P.char '{') (P.char '}') . inSpaces
+type PEnv = Map Name SourcePos
+type St = StateT SourcePos Identity
 
-keywords :: [String]
-keywords = ["let", "in", "end", "case", "of"]
+type LangDef   = GenLanguageDef String PEnv St
+type TokParser = GenTokenParser String PEnv St
+type OpTable a = OperatorTable  String PEnv St a
 
-class Parsable p where
-  parser :: Parser p
+type Parser a = ParsecT String PEnv St a
+
+
+symDef :: LangDef
+symDef = emptyDef
+  { commentStart    = "{-"
+  , commentEnd      = "-}"
+  , identStart      = letter
+  , identLetter     = alphaNum
+  , opStart         = oneOf (nub operatorChars)
+  , opLetter        = oneOf (nub operatorChars)
+  , reservedOpNames = opKeywords
+  , reservedNames   = strKeywords
+  }
+
+tok :: TokParser
+tok =  makeTokenParser symDef
+
+sym :: String -> Parser ()
+sym = reserved tok
+
+op :: String -> Parser ()
+op = reservedOp tok
+
 
 nameP :: Parser Name
-nameP = do n <- (:) <$> P.letter <*> many (P.letter <|> P.digit) <?> "name"
-           when (n `elem` keywords) $ do
-             fail "keyword is not valid name"
-           return n
+nameP = identifier tok
+
+boundedName :: Parser Name
+boundedName = do
+  n   <- identifier tok
+  env <- getState
+  when (isNothing (M.lookup n env)) $ do
+    fail $ "Not in scope: " ++ n ++ "\n" ++
+           "Did you mean TODO"
+  return n
+
+newName :: Parser Name
+newName = do
+  pos <- getPosition
+  n   <- identifier tok
+  env <- getState
+  case M.lookup n env of
+    Just npos -> fail $ "Already defined at: " ++ show npos
+    Nothing -> do
+      setState (M.insert n pos env)
+      return n
 
 
+class Expr a where
+  expr  :: Parser a
 
-tyLitP :: Parser Name
-tyLitP = (:) <$> P.satisfy isUpper <*> many P.letter
+exprPrec :: Expr a => String -> OpTable a -> [Parser a] -> Parser a
+exprPrec msg ops atoms = buildExpressionParser ops
+    (choice (fmap try (atoms ++ [parens tok expr]))) <?> msg
 
-conP :: Parser Name
-conP = tyLitP
+blockPrec msg bs = block (choice (fmap try bs)) <?> msg
 
-arrowP :: Parser ()
-arrowP = skipSpace >> P.string "->" >> skipSpace
-
-litP :: Parser Literal
-litP = choice
-       [ LitInt  <$> P.signed P.decimal
-       , LitChar <$> (P.char '\'' *> P.anyChar <* P.char '\'')
+instance Expr Literal where
+  expr = exprPrec "literal" []
+       [ LitInt  <$> (fromIntegral <$> integer tok)
+       , LitChar <$> charLiteral tok
        ]
 
-patP :: Parser Pat
-patP = choice
-       [ WildP <$ P.char '_'
-       , LitP  <$> litP
-       , VarP  <$> nameP
-       , ConP  <$> conP <*> (skipSpace *> (nameP `P.sepBy` skipSpace))
-       , inParens patP
-       ]
+instance Expr Pat where
+  expr = exprPrec "pattern" []
+    [ WildP <$  sym "_"
+    , LitP  <$> expr
+    , VarP  <$> nameP
+    ]
 
 altP :: Parser Alt
-altP = (,) <$> patP <*> (inSpaces (P.string "=>") *> expP)
+altP = (,) <$> (expr <* sym "->") <*> expr
 
-altsP :: Parser [Alt]
-altsP = inBraces (altP `P.sepBy1` inSpaces (P.char ';'))
+instance Expr Exp where
+  expr = fmap (L.foldl1 App) $ some $ indented >> exprPrec "expression" []
+    [ Bot  <$  sym "_|_"
+    , Lit  <$> expr
+    , Var  <$> nameP
+    , Let  <$> (sym "let" *> nameP)
+           <*> (sym "="   *> expr)
+           <*> (sym "in"  *> expr <* reserved tok "end")
+    , Case <$> (sym "case" *> expr)
+           <*> (sym "of"   *> block altP)
+    , Abs  <$> (sym "\\"   *> nameP)
+           <*> (sym "."    *> expr)
+    ]
 
-expP :: Parser Exp
-expP = foldApp <$> (lex `P.sepBy1` skipSpace) <?> "expr"
-    where
-      lex = choice
-            [ Bot <$  P.string "_|_"
-            , Lit <$> litP
-            , Let <$> ("let" .*> inSpaces nameP)
-                  <*> ("="   .*> inSpaces expP)
-                  <*> ("in"  .*> inSpaces expP <*. "end")
-            , Case <$> ("case" .*> inSpaces expP)
-                   <*> ("of"   .*> skipSpace *> altsP)
-            , Var <$> nameP
-            , Abs <$> ("\\" .*> inSpaces nameP  <*. ".")
-                  <*> (skipSpace *> expP)
-            , inParens expP
-            ]
+tyLitP = nameP
+tyVarP = nameP
 
-      foldApp = foldl1 App
+instance Expr Ty where
+  expr = exprPrec "type"
+    [ [Infix (op "->" >> return (.->)) AssocRight]
+    ]
+    [ LitT <$> tyLitP
+    , VarT <$> tyVarP
+    ]
+
+instance Expr Kind where
+  expr = exprPrec "kind"
+    [ [Infix (op "->" >> return ArrK) AssocRight]
+    ]
+    [ Star <$  sym "*"
+    , VarK <$> nameP
+    ]
+
+instance Expr a => Expr (Scheme a) where
+  expr = exprPrec "scheme"    []
+    [ Poly <$> (sym "forall" *> nameP <* sym ".") <*> expr
+    , Mono <$> expr
+    ]
+
+instance Expr Dec where
+  expr = exprPrec "declaration" []
+    [ SigD  <$> (nameP <*  sym ":") <*> schemeP
+    , FunD  <$>  nameP <*> many nameP  <*> (sym "=" *> expr)
+    , DataD <$> (sym "data" *> nameP)
+            <*> (sym ":"    *> expr)
+    ]
+
+instance Expr Module where
+  expr = exprPrec "module" []
+         [ sym "module" >> nameP >> sym "where" >>
+           Module <$> block expr
+         ]
 
 tyP :: Parser Ty
-tyP = foldArr <$> (lex `P.sepBy1` skipSpace) <?> "type"
-    where
-      lex = choice
-            [ litArr <$ P.string "->"
-            , LitT   <$> tyLitP
-            , VarT   <$> nameP
-            , inParens tyP
-            ]
+tyP = expr
 
-      foldArr = foldr1 (.->) . map (foldl1 AppT) . L.splitWhen isArr
-
-      isArr (LitT "->") = True
-      isArr _           = False
-
-      litArr = LitT "->"
+kindP :: Parser Kind
+kindP = expr
 
 schemeP :: Parser (Scheme Ty)
-schemeP = choice
-          [ Poly <$> ("forall" .*> inSpaces nameP <*. ".")
-                 <*> (skipSpace *> schemeP)
-          , Mono <$> tyP
-          ] <?> "type scheme"
-
-kindP :: Bool -> Parser Kind
-kindP lft = choice
-        [ do when lft $ do fail "left"
-             ArrK <$> kindP True <*> (arrowP *> kindP False)
-        , Star <$  P.char '*'
-        , inParens (kindP False)
-        ] <?> "kind"
-
-decP :: Parser Dec
-decP = choice
-       [ DataD <$> ("data" .*> inSpaces nameP <*. colon)
-               <*> (skipSpace *> kindP False)
-       , SigD  <$> (nameP <* inSpaces (P.char ':'))
-               <*> schemeP
-       , FunD  <$> (nameP <* skipSpace)
-               <*> (nameP `P.sepBy` skipSpace)
-               <*> (inSpaces (P.char '=') *> expP)
-       ] <?> "declaration"
-    where
-      colon = ":"
+schemeP = expr
 
 moduleP :: Parser Module
-moduleP = Module <$> many (decP <* (skipSpace >> P.char ';' >> skipSpace))
-                 <* endOfInput
+moduleP = expr
 
-parseModule :: Text  -> Either String Module
-parseModule = P.parseOnly moduleP
+fileP :: Parser Module
+fileP = whiteSpace tok *> moduleP <* eof
+
+parseFile :: String -> IO (Either ParseError Module)
+parseFile path = do
+  src <- readFile path
+  return (runIndent path (runParserT fileP M.empty path src))

@@ -27,7 +27,7 @@ import AST
 import Unify
 import Eval
 import Module
-import NewParser
+import Parser
 import TC
 import TyError
 
