@@ -3,6 +3,7 @@ module Parser where
 import Control.Applicative hiding (many)
 import Control.Monad.Identity
 import Control.Monad.State as M
+import Data.Char
 import Data.Maybe
 import Data.List as L
 import Data.Map as M
@@ -123,14 +124,23 @@ instance Expr Exp where
            <*> (sym "."    *> expr)
     ]
 
-tyLitP = nameP
-tyVarP = nameP
+tyLitP :: Parser Name
+tyLitP = do
+  n <- nameP
+  when (isLower (head n)) $ fail "not a ty lit"
+  return n
+
+tyVarP :: Parser Name
+tyVarP = do
+  n <- nameP
+  when (isUpper (head n)) $ fail "not a ty var"
+  return n
 
 modNameP :: Parser ModName
 modNameP = ModName <$> nameP
 
 instance Expr Ty where
-  expr = exprPrec "type"
+  expr = fmap (L.foldl1 AppT) $ some $ indented >> exprPrec "type"
     [ [Infix (op "->" >> return (.->)) AssocRight]
     ]
     [ LitT <$> tyLitP
