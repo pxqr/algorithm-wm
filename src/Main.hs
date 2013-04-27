@@ -72,7 +72,7 @@ checkModule m = do
     foldM checkDec initTyEnv grm
   where
     groupDec :: [Dec] -> Result [[Dec]]
-    groupDec (x@(DataD _ _)  : xs)   = ([x] :) <$> groupDec xs
+    groupDec (x@(DataD _ _ _)  : xs)   = ([x] :) <$> groupDec xs
     groupDec (sig@(SigD sn _) : xs)
       | fun@(FunD fn _ _)  : xs' <- xs
       , fn == sn                     = ([sig, fun] :) <$> groupDec xs'
@@ -93,8 +93,10 @@ checkModule m = do
                        |    otherwise   = return (S.insert n s)
 
     checkDec :: TyEnv -> [Dec] -> Result TyEnv
-    checkDec env [DataD n k] = do
+    checkDec env [DataD n k cons]  = do
       return ((n, HasKind k) : env)
+      where
+
 
     checkDec env [SigD n sc, FunD _ ps e] = do
       ty <- runTI env $ do

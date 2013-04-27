@@ -156,8 +156,11 @@ instance Expr Dec where
     [ SigD  <$> (nameP <*  sym ":") <*> schemeP
     , FunD  <$>  nameP <*> many nameP  <*> (sym "=" *> expr)
     , DataD <$> (sym "data" *> nameP)
-            <*> (sym ":"    *> expr)
+            <*> (sym ":"    *> expr  <* sym "where")
+            <*> block conP
     ]
+   where
+     conP = (,) <$> nameP <*> (sym ":" *> expr)
 
 instance Expr Module where
   expr = exprPrec "module" []
