@@ -24,9 +24,9 @@ type TyEnv = [(Name, Info)]
 type Result = Either TyError
 
 type Index = Int
-type Context = ReaderT TyEnv (StateT Index (UnifierM Ty Result))
+type Context t = ReaderT TyEnv (StateT Index (UnifierM t Result))
 
-generalizeM :: Term a Ty => a -> Context (Scheme a)
+generalizeM :: Term a Ty => a -> Context a (Scheme a)
 generalizeM ty = generalize ty . S.fromList . map fst <$> tyEnv
 
 substTyEnv :: TyEnv -> Subst Ty  -> TyEnv
@@ -38,25 +38,29 @@ substTyEnv env s = map substInfoItem env
 border :: Name
 border = "__expr_border"; -- TODO: remove
 
-tyEnv :: Context TyEnv
+tyEnv :: Context t TyEnv
 tyEnv = ask
 
-withU :: Unifier Ty a -> Context a
-withU = lift . lift . mapStateT (mapLeft UnificationE)
-  where
-    mapLeft f (Left a)  = Left (f a)
-    mapLeft f (Right a) = Right a
+mapLeft :: (a -> b) -> Either a c -> Either b c
+mapLeft f (Left a)  = Left (f a)
+mapLeft f (Right a) = Right a
 
-fresh :: Context Name
+withU :: Unifier Ty a -> Context Ty a
+withU = lift . lift . mapStateT (mapLeft UnificationE)
+
+withUKd :: Unifier Kind a -> Context Kind a
+withUKd = lift . lift . mapStateT (mapLeft KdUnificationE)
+
+fresh :: Context t Name
 fresh = do
   i <- get
   modify succ
   return ('v' : show i)
 
-freshTyVar :: Context Ty
+freshTyVar :: Context t Ty
 freshTyVar = VarT <$> fresh
 
-freshInst :: Term a Ty => Scheme a -> Context a
+freshInst :: Term a Ty => Scheme a -> Context t a
 freshInst = go []
   where
     go s (Mono t)   = return (subst t s)
@@ -64,46 +68,49 @@ freshInst = go []
       f <- freshTyVar
       go ((n, f) : s) t
 
-bindLocal :: Name -> Scheme Ty -> Context a -> Context a
+bindLocal :: Name -> Scheme Ty -> Context t a -> Context t a
 bindLocal n t = local ((n, HasType t) :)
 
-bindLocalMany :: Subst (Scheme Ty) -> Context a -> Context a
+bindLocalMany :: Subst (Scheme Ty) -> Context t a -> Context t a
 bindLocalMany bs = local (map (second HasType) bs ++)
 
 --bindKindLocal :: Name -> Scheme -> Context a -> Context a
 --bindKindLocal n t = local ((n, HasType t) :)
 
-substLocal :: Context a -> Context a
+substLocal :: Context Ty a -> Context Ty a
 substLocal cxt = do
   s <- withU $ do get
   local (`substTyEnv` s) cxt
 
-lookupName :: [Exp] -> Name -> Context Info
+lookupName :: [Exp] -> Name -> Context t Info
 lookupName es n = do
   minfo <- asks (lookup n)
   case minfo of
     Nothing -> throwError (UnboundE n es)
     Just info -> return info
 
-lookupVar :: [Exp] -> Name -> Context (Scheme Ty)
+lookupVar :: [Exp] -> Name -> Context t (Scheme Ty)
 lookupVar es n = do
   info <- lookupName es n
   case info of
     HasType ty -> return ty
     _          -> throwError (UnboundE n es)
 
-lookupTyLit :: Name -> Context Kind
+lookupTyLit :: Name -> Context t Kind
 lookupTyLit n = do
   info <- lookupName [] n
   case info of
     HasKind k  -> return k
     _          -> throwError (UnboundE n [])
 
+lookupTyVar :: Name -> Context t Kind
+lookupTyVar = lookupTyLit
+
 tyInfLit :: Literal -> Ty
 tyInfLit (LitInt i) = LitT "Int"
 tyInfLit (LitChar c) = LitT "Char"
 
-tyProjPat :: [Exp] -> Ty -> Pat -> Context (Subst Ty)
+tyProjPat :: [Exp] -> Ty -> Pat -> Context Ty (Subst Ty)
 tyProjPat _  _  WildP      = return []
 tyProjPat _  t (VarP n)    = return [(n, t)]
 tyProjPat es t (ConP n names) = do
@@ -123,7 +130,7 @@ tyProjPat es t (ConP n names) = do
     unfoldArr = undefined
 
 
-tyInfW :: Exp -> Context Ty
+tyInfW :: Exp -> Context Ty Ty
 tyInfW = tyInf []
     where
       tyInf es e = go (e : es) e
@@ -160,12 +167,12 @@ tyInfW = tyInf []
         tyAltsAgree ts
 -}
        where
-         tyInfAlt :: Ty -> Pat -> Exp -> Context Ty
+         tyInfAlt :: Ty -> Pat -> Exp -> Context Ty Ty
          tyInfAlt t p e = do
            binds <- undefined --tyInstPat es t p >>= mapM generalizeM
            bindLocalMany binds (tyInf es e)
 
-         tyAltsAgree :: [Ty] -> Context Ty
+         tyAltsAgree :: [Ty] -> Context Ty Ty
          tyAltsAgree [] = stringError $ "no one alt " ++ show es
          tyAltsAgree (t : ts) = withU $ do
              undefined -- foldM unify t ts
@@ -179,17 +186,7 @@ tyInfW = tyInf []
         return tann
 
 
-withDef :: Context a -> Context a
+withDef :: Context t a -> Context t a
 withDef = bindLocal border err
     where
       err = error "don't use ty of border"
-
-
-
-type TyVarEnv = Subst Kind
-
-kiInf :: Ty -> Context Kind
-kiInf (LitT n) = lookupTyLit n
-kiInf (VarT n) = undefined --lookupTyVar n
-kiInf (AppT t1 t2) = undefined
-kiInf (AbsT _ _  ) = undefined

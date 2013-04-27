@@ -45,7 +45,7 @@ data Ty = LitT Name
 data Kind = Star
           | VarK Name
           | ArrK Kind Kind
-            deriving Show
+            deriving (Eq, Show)
 
 data Scheme a = Mono a
               | Poly Name (Scheme a)
@@ -84,6 +84,15 @@ instance Term Ty Ty where
                          |       otherwise       = t
   subst   (AppT t1 t2) s = AppT (subst t1 s) (subst t2 s)
 
+instance Term Kind Kind where
+  freeVars  Star    = S.empty
+  freeVars (VarK n) = S.singleton n
+  freeVars (ArrK k1 k2) = freeVars k1 <> freeVars k2
+
+  subst Star _ = Star
+  subst k@(VarK n)     s | Just k' <- lookup n s = k'
+                         |       otherwise       = k
+  subst   (ArrK k1 k2) s = ArrK (subst k1 s) (subst k2 s)
 
 instance Term a a => Term (Scheme a) a where
   freeVars (Mono t)   = freeVars t

@@ -25,7 +25,8 @@ moveTop = foldr moveBack
 newtype ExpTrace = ExpTrace ([ExpPath], Exp)
                    deriving Show
 
-data TyError = UnificationE UFailure
+data TyError = UnificationE (UFailure Ty)
+             | KdUnificationE (UFailure Kind)
              | UnboundE     Name    [Exp]
              | TyMismatchE  Ty Ty   [Exp]
              | KindMismatchE Kind Kind Ty

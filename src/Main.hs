@@ -32,7 +32,7 @@ import TC
 import TyError
 
 
-traceEnvUp :: Context TyEnv
+traceEnvUp :: Context t TyEnv
 traceEnvUp = takeWhile ((border /=) . fst) <$> tyEnv
 
 
@@ -54,7 +54,7 @@ runUnifier u = evalStateT u []
 --runContext :: Context a -> TyEnv -> Unifier Ty a
 runContext c env = evalStateT (runReaderT c env) 0
 
-runTI :: TyEnv -> Context a -> Result a
+runTI :: TyEnv -> Context t a -> Result a
 runTI env c = runUnifier (runContext c env)
 
 inferTy :: Exp -> TyEnv -> Result (Scheme Ty)
