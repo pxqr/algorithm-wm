@@ -17,8 +17,9 @@ data Dec = DataD Name Kind [ConDef]
            deriving Show
 
 data Module = Module {
-    modName :: ModName
-  , modDecs :: [Dec]
+    modName    :: ModName
+--  , modImports :: ModName
+  , modDecs    :: [Dec]
   }
 
 instance Pretty Dec where

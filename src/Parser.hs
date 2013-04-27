@@ -19,15 +19,15 @@ import Name
 
 strKeywords :: [String]
 strKeywords = [ "let",  "in", "end"
-           , "case", "of", "end"
-           , "data"
-           ]
+              , "case", "of", "end"
+              , "data"
+              ]
 
 opKeywords :: [String]
-opKeywords = [".", "=", ":", "\\"]
+opKeywords = [".", "=", ":", "\\", "_"]
 
 operatorChars :: String
-operatorChars = "<>"
+operatorChars = "+-*/<>="
 
 type PEnv = Map Name SourcePos
 type St = StateT SourcePos Identity
@@ -84,6 +84,9 @@ newName = do
       setState (M.insert n pos env)
       return n
 
+newOp :: Parser Name
+newOp = parens tok (some (oneOf operatorChars))
+
 
 class Expr a where
   expr  :: Parser a
@@ -94,27 +97,43 @@ exprPrec msg ops atoms = buildExpressionParser ops
 
 blockPrec msg bs = block (choice (fmap try bs)) <?> msg
 
+conP :: Parser Name
+conP = tyLitP
+
 instance Expr Literal where
   expr = exprPrec "literal" []
        [ LitInt  <$> (fromIntegral <$> integer tok)
        , LitChar <$> charLiteral tok
+       , LitCon  <$> conP
        ]
+
+
+patVarP :: Parser Name
+patVarP = tyVarP
+
+patConP :: Parser Name
+patConP = tyLitP
+
 
 instance Expr Pat where
   expr = exprPrec "pattern" []
     [ WildP <$  sym "_"
+    , ConP  <$> patConP <*> some patVarP
     , LitP  <$> expr
-    , VarP  <$> nameP
+    , VarP  <$> patVarP
     ]
 
 altP :: Parser Alt
 altP = (,) <$> (expr <* sym "->") <*> expr
 
+varP :: Parser Name
+varP = tyVarP
+
 instance Expr Exp where
   expr = fmap (L.foldl1 App) $ some $ indented >> exprPrec "expression" []
     [ Bot  <$  sym "_|_"
     , Lit  <$> expr
-    , Var  <$> nameP
+    , Var  <$> varP
     , Let  <$> (sym "let" *> nameP)
            <*> (sym "="   *> expr)
            <*> (sym "in"  *> expr <* reserved tok "end")
@@ -174,7 +193,7 @@ instance Expr Dec where
 
     ]
    where
-     conP = (,) <$> nameP <*> (sym ":" *> expr)
+     conP = (,) <$> (try nameP <|> newOp) <*> (sym ":" *> expr)
 
 instance Expr Module where
   expr = exprPrec "module" []

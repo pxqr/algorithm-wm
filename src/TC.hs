@@ -111,9 +111,10 @@ lookupTyLit n = do
 lookupTyVar :: Name -> Context t Kind
 lookupTyVar = lookupTyLit
 
-tyInfLit :: Literal -> Ty
-tyInfLit (LitInt i) = LitT "Int"
-tyInfLit (LitChar c) = LitT "Char"
+tyInfLit :: Literal -> Context Ty Ty
+tyInfLit (LitInt _)  = return (LitT "Int")
+tyInfLit (LitChar _) = return (LitT "Char")
+tyInfLit (LitCon n)  = lookupVar [] n >>= freshInst
 
 tyProjPat :: [Exp] -> Ty -> Pat -> Context Ty (Subst Ty)
 tyProjPat _  _  WildP      = return []
@@ -143,7 +144,7 @@ tyInfW = tyInf []
       go _   Bot    = freshVar
 
       -- TODO: keep zipper of Exp in context env
-      go _  (Lit l) = return (tyInfLit l)
+      go _  (Lit l) = tyInfLit l
       go es (Var n) = lookupVar es n >>= freshInst
       go es (Abs n e) = do
         t  <- freshVar

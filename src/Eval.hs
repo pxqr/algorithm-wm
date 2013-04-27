@@ -3,6 +3,7 @@ module Eval (evalMain, Value) where
 
 import Control.Applicative
 import Data.Maybe
+import Data.Char
 import Data.List
 import qualified Data.Map as M
 import Data.Map (Map)
@@ -16,7 +17,7 @@ import Module
 type GlIx = Int
 type LcIx = Int
 
-data Prim = Add | Sub 
+data Prim = Add | Sub
 
 type AltC = (Pat, ExpC)
 
@@ -24,6 +25,7 @@ data ExpC = BotC
           | LitC  Literal
           | Free  {-# UNPACK #-} !GlIx
           | Bnd   {-# UNPACK #-} !LcIx
+          | ConC  Name
           | AbsC  ExpC
           | AppC  ExpC ExpC
           | CaseC ExpC [AltC]
@@ -43,7 +45,7 @@ instance Pretty ExpC where
     pretty (AppC e1 e2) = parens (pretty e1 <+> pretty e2)
     pretty (CaseC e1 alts) = "case" <+> pretty e1 <+> "of" <> line <>
                                     indent 4 (vcat (map ppAlt alts))
-                                    where 
+                                    where
                                       ppAlt (p, e) = pretty p <+> "=>" <+> pretty e
 
 valueToExp :: Value -> Exp
@@ -71,9 +73,10 @@ link defs = V.fromList (map (toExpC [] . snd) defs)
     toExpC :: [Name] -> Exp -> ExpC
     toExpC _      Bot    = BotC
     toExpC _     (Lit l) = LitC l
-    toExpC localSym (Var n) 
+    toExpC localSym (Var n)
         | Just ix <- n `elemIndex` localSym = Bnd ix
-        | Just ix <- n `M.lookup`  globSym  = Free ix
+        | Just ix <- n `M.lookup`  globSym  =
+          if isUpper (head n) then error "toExpC" else Free ix
         |             otherwise             = error ("link: unbound symbol " ++ n)
 
     toExpC local (Abs n e)     = AbsC (toExpC (n : local) e)
@@ -95,14 +98,15 @@ apply  BotV    _ = BotV
 apply (AbsV f) v = f v
 apply v1       a = error ("Unable to apply " ++ show (pretty v1) ++ show (pretty a))
 
-eval :: EvEnv -> Stack -> ExpC -> Value 
+eval :: EvEnv -> Stack -> ExpC -> Value
 eval _   s  BotC       = BotV
 eval _   s (LitC l)    = LitV l
 eval env s (Free ix)   = eval env s (V.unsafeIndex env ix)
 eval env s (Bnd  ix)   = s !! ix
+eval env s (ConC n)    = ConV n [] -- ERROR TODO
 eval env s (AbsC e)    = AbsV (\x -> eval env (x : s) e)
 eval env s (AppC e1 e2) = apply (eval env s e1) (eval env s e2)
-eval env s (CaseC e1   alts) = case eval env s e1 of 
+eval env s (CaseC e1   alts) = case eval env s e1 of
                                  BotV -> BotV
                                  v    -> select v alts
     where
@@ -113,13 +117,13 @@ eval env s (CaseC e1   alts) = case eval env s e1 of
 
       match :: Value -> Pat -> Maybe [Value]
       match _              WildP        = Just []
-      match (LitV v)      (LitP l)      | v `matchLit` l = Just []  where matchLit = (==) 
+      match (LitV v)      (LitP l)      | v `matchLit` l = Just []  where matchLit = (==)
       match v             (VarP n)      = Just [v]
       match (ConV en evs) (ConP pn pns) | en == pn =
            if length evs == length pns then Just evs
            else error ("EVAL: Con arity mismatch " ++ show (pretty evs) ++ " " ++ show pns)
       match _             _             = Nothing
-      
+
       errNonExhaustive = error ("Non-exhaustive patterns\n" ++ show (pretty (CaseC e1 alts)))
 
 
@@ -139,4 +143,4 @@ evalMain m = eval prg [] . (prg V.!) <$> (entryName `elemIndex`  (map fst defs))
       funD (FunD n ps e) = Just (n, desugar e ps)
       funD _             = Nothing
 
-      desugar = foldr Abs 
+      desugar = foldr Abs

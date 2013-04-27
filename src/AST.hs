@@ -7,6 +7,7 @@ module AST ( Literal(..), Exp(..), Pat(..), Alt, Ty(..), Kind(..), Scheme(..)
            ) where
 
 import Data.List
+import Data.Char
 import Data.Monoid
 import qualified Data.Set as S
 import Data.Set (Set)
@@ -16,6 +17,7 @@ import Name
 
 data Literal = LitInt  Int
              | LitChar Char
+             | LitCon  Name
                deriving (Show, Eq)
 
 data Exp = Bot
@@ -110,12 +112,13 @@ instance Term a a => Term (Scheme a) a where
 instance Pretty Literal where
     pretty (LitInt i)  = cyan (int i)
     pretty (LitChar c) = cyan (char '\'' <> char c <> char '\'')
+    pretty (LitCon  n) = blue (text n)
 
 instance Pretty Pat where
     pretty WildP    = red "_"
     pretty (LitP l) = pretty l
     pretty (VarP n) = text n
-    pretty (ConP n ns) = pretty n <+> hsep (map text ns)
+    pretty (ConP n ns) = blue (pretty n) <+> hsep (map text ns)
 
 instance Pretty Exp where
   pretty = hsep . map pp . unfoldApp
