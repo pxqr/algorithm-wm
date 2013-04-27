@@ -1,10 +1,12 @@
-data Int : *;
-data State : * -> (* -> *) -> *;
+module ParserTest where
 
-caseTest = case let int = 1 in (\a. \b. a) 10 'a' end of {
-             0 => 'a';
-             1 => 'b';
-             _ => let id = \x. x in id 'c' end
-           };
+data Int : *
+data State : * -> (* -> *) -> *
 
-main = caseTest;
+caseTest1 = case 0 of
+  1 -> 'b'
+  _ -> let id = \ x. x in id end
+
+caseTest2 = case let f = \ x. x in 1 end of a -> a
+
+main = caseTest1

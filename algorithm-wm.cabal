@@ -23,12 +23,15 @@ executable algorithm-wm
     , Module
     , Name
     , Parser
+    , NewParser
     , TC
     , TyError
     , Unify
 
   build-depends:
       attoparsec
+    , parsec
+    , indents
     , base       == 4.*
     , mtl        == 2.*
     , ghc        == 7.4.*

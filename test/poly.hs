@@ -1,25 +1,27 @@
-undefined : a;
-undefined = _|_;
+module PolyTest where
 
-id x = x;
-const a b = a;
-flip f a b = f b a;
-compose f g x = f (g x);
-apply f x = f x; 
-save x f = f x;
+undefined : a
+undefined = _|_
 
-coerse : a -> b;
-coerse = undefined;
+id x = x
+const a b = a
+flip f a b = f b a
+compose f g x = f (g x)
+apply f x = f x
+save x f = f x
 
-unifiable : a -> a -> a;
-unifiable = const;
+coerse : a -> b
+coerse = undefined
 
-polyLet = let id = \x. x in 
-            id id id id id id (id id) id ((id id) id) id id id id id 
-          end;
+unifiable : a -> a -> a
+unifiable = const
 
-assert1 = unifiable 1 2;
-assert2 = unifiable id polyLet;
-assert3 = unifiable coerse id;
+polyLet = let id = \ x. x in
+            id id id id id id (id id) id ((id id) id) id id id id id
+          end
 
-main = 0;
+assert1 = unifiable 1 2
+assert2 = unifiable id polyLet
+assert3 = unifiable coerse id
+
+main = 0

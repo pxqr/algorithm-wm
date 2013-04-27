@@ -1,4 +1,5 @@
-{-# LANGUAGE FunctionalDependencies, FlexibleInstances, FlexibleContexts, OverloadedStrings #-}
+{-# LANGUAGE FunctionalDependencies, FlexibleInstances #-}
+{-# LANGUAGE FlexibleContexts, OverloadedStrings #-}
 module Main where
 
 import Control.Applicative
@@ -13,7 +14,7 @@ import Data.Char
 import Data.Maybe
 import Data.List as L
 import qualified Data.Text.IO as T
-import Data.Text (Text)
+import Data.Text (Text, unpack)
 import Text.PrettyPrint.ANSI.Leijen hiding ((<>), (<$>), empty)
 
 import System.INotify
@@ -26,7 +27,7 @@ import AST
 import Unify
 import Eval
 import Module
-import Parser
+import NewParser
 import TC
 import TyError
 
@@ -114,9 +115,9 @@ checkModule m = do
 --------------------------------------------------------------------------------
 run :: FilePath -> IO ()
 run path = do
-  src <- T.readFile path
-  case parseModule src of
-    Left s -> print $ hang 4 ((red "Unable to parse:") </> text s)
+  mod <- parseFile path
+  case mod of
+    Left s -> print $ hang 4 ((red "Unable to parse:") </> text (show s))
     Right m -> do
       print $ "Parsed module:" <> line <>
                 indent 4 (pretty m)
