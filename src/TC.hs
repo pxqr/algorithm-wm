@@ -36,7 +36,7 @@ substTyEnv env s = map substInfoItem env
       substInfoItem info = info
 
 border :: Name
-border = "__expr_border"; -- TODO: remove 
+border = "__expr_border"; -- TODO: remove
 
 tyEnv :: Context TyEnv
 tyEnv = ask
@@ -48,9 +48,9 @@ withU = lift . lift . mapStateT (mapLeft UnificationE)
     mapLeft f (Right a) = Right a
 
 fresh :: Context Name
-fresh = do 
+fresh = do
   i <- get
-  modify succ 
+  modify succ
   return ('v' : show i)
 
 freshTyVar :: Context Ty
@@ -60,7 +60,7 @@ freshInst :: Term a Ty => Scheme a -> Context a
 freshInst = go []
   where
     go s (Mono t)   = return (subst t s)
-    go s (Poly n t) = do 
+    go s (Poly n t) = do
       f <- freshTyVar
       go ((n, f) : s) t
 
@@ -74,14 +74,14 @@ bindLocalMany bs = local (map (second HasType) bs ++)
 --bindKindLocal n t = local ((n, HasType t) :)
 
 substLocal :: Context a -> Context a
-substLocal cxt = do 
+substLocal cxt = do
   s <- withU $ do get
   local (`substTyEnv` s) cxt
 
 lookupName :: [Exp] -> Name -> Context Info
-lookupName es n = do 
-  minfo <- asks (lookup n) 
-  case minfo of 
+lookupName es n = do
+  minfo <- asks (lookup n)
+  case minfo of
     Nothing -> throwError (UnboundE n es)
     Just info -> return info
 
@@ -115,9 +115,9 @@ tyProjPat es t (ConP n names) = do
 
 --    when (length ts /= length names) $ do
 --         throwError (ConArityMismatchE es)
-                    
+
     return (zip names ts)
-             
+
   where
     unfoldArr :: Ty -> [Ty]
     unfoldArr = undefined
@@ -127,30 +127,30 @@ tyInfW :: Exp -> Context Ty
 tyInfW = tyInf []
     where
       tyInf es e = go (e : es) e
-      
+
       go _   Bot    = freshTyVar
 
       -- TODO: keep zipper of Exp in context env
       go _  (Lit l) = return (tyInfLit l)
       go es (Var n) = lookupVar es n >>= freshInst
-      go es (Abs n e) = do 
+      go es (Abs n e) = do
         t  <- freshTyVar
         t2 <- bindLocal n (Mono t) (tyInf es e)
         t1 <- withU $ do reify t
         return (t1 .-> t2)
 
-      go es (App e1 e2) = do 
+      go es (App e1 e2) = do
         t1 <- tyInf es e1
         t2 <- substLocal (tyInf es e2)
         f  <- freshTyVar
-        withU $ do 
-          t1' <- reify t1 
+        withU $ do
+          t1' <- reify t1
           unify t1' (t2 .-> f)
           reify f
 
-      go es (Let n e1 e2) = do 
+      go es (Let n e1 e2) = do
         t1 <- tyInf es e1
-        substLocal $ do 
+        substLocal $ do
           s1 <- generalizeM t1
           bindLocal n s1 $ tyInf es e2
 
@@ -159,15 +159,15 @@ tyInfW = tyInf []
         ts <- forM alts $ uncurry (tyInfAlt t1)
         tyAltsAgree ts
 -}
-       where 
+       where
          tyInfAlt :: Ty -> Pat -> Exp -> Context Ty
          tyInfAlt t p e = do
-           binds <- undefined --tyInstPat es t p >>= mapM generalizeM 
+           binds <- undefined --tyInstPat es t p >>= mapM generalizeM
            bindLocalMany binds (tyInf es e)
 
          tyAltsAgree :: [Ty] -> Context Ty
          tyAltsAgree [] = stringError $ "no one alt " ++ show es
-         tyAltsAgree (t : ts) = withU $ do 
+         tyAltsAgree (t : ts) = withU $ do
              undefined -- foldM unify t ts
              reify t
 
@@ -185,24 +185,11 @@ withDef = bindLocal border err
       err = error "don't use ty of border"
 
 
-{-
--- TODO: we need proper context and unifier for kind inference
+
 type TyVarEnv = Subst Kind
 
-kindInfer :: Ty -> Context Kind
-kindInfer (LitT n) = lookupTyLit n
-kindInfer (VarT n) = return Star -- TODO fix that
-kindInfer (AppT t1 t2) = do
-    k1 <- kindInfer t1
-    k2 <- kindInfer t2
-    case k1 of
-      ArrK k1' k | k1' == k1 -> return k
-                 | otherwise -> throwError (KindMismatch k1' k1)
-      Star -> throwError (KindMismatch k1' k1)
-
-kindCheck ::  -> Ty -> Kind -> Context ()
-kindCheck  = undefined
-
-isSaturatedTy :: Scheme -> Context ()
-isSaturatedTy ty = kindCheck ty Star
--}
+kiInf :: Ty -> Context Kind
+kiInf (LitT n) = lookupTyLit n
+kiInf (VarT n) = undefined --lookupTyVar n
+kiInf (AppT t1 t2) = undefined
+kiInf (AbsT _ _  ) = undefined
