@@ -126,6 +126,9 @@ instance Expr Exp where
 tyLitP = nameP
 tyVarP = nameP
 
+modNameP :: Parser ModName
+modNameP = ModName <$> nameP
+
 instance Expr Ty where
   expr = exprPrec "type"
     [ [Infix (op "->" >> return (.->)) AssocRight]
@@ -158,8 +161,8 @@ instance Expr Dec where
 
 instance Expr Module where
   expr = exprPrec "module" []
-         [ sym "module" >> nameP >> sym "where" >>
-           Module <$> block expr
+         [ Module <$> (sym "module" *> modNameP <* sym "where")
+                  <*> block expr
          ]
 
 tyP :: Parser Ty

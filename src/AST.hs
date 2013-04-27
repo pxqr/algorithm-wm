@@ -14,7 +14,7 @@ import Text.PrettyPrint.ANSI.Leijen hiding ((<>))
 
 import Name
 
-data Literal = LitInt  Int 
+data Literal = LitInt  Int
              | LitChar Char
                deriving (Show, Eq)
 
@@ -28,7 +28,7 @@ data Exp = Bot
          | Case Exp [(Pat, Exp)]
            deriving Show
 
-data Pat = WildP 
+data Pat = WildP
          | LitP Literal
          | VarP Name
          | ConP Name [Name]
@@ -69,9 +69,9 @@ class Term t t' | t -> t' where
 instance Term Exp Exp where
   freeVars (Var n) = S.singleton n
   freeVars (App e1 e2) = freeVars e1 <> freeVars e2
-  freeVars (Abs n  e ) = n `S.delete` freeVars e 
+  freeVars (Abs n  e ) = n `S.delete` freeVars e
   freeVars (Let n e1 e2) = freeVars e1 <> freeVars (Abs n e2)
-                  
+
   subst = error "Term Exp Exp"
 
 instance Term Ty Ty where
@@ -103,7 +103,7 @@ instance Pretty Pat where
     pretty (ConP n ns) = pretty n <+> hsep (map text ns)
 
 instance Pretty Exp where
-  pretty = hsep . map pp . unfoldApp 
+  pretty = hsep . map pp . unfoldApp
       where
         unfoldApp (App e1 e2) = unfoldApp e1 ++ [e2]
         unfoldApp t = [t]
@@ -113,33 +113,33 @@ instance Pretty Exp where
         pp   (Var n)     = text n
         pp t@(App e1 e2) = parens (pretty t)
         pp   (Abs n e)   = parens (lambda <> text n <> dot <+> pretty e)
-            where 
+            where
               lambda = green (char 'λ')
 
         pp (Let n e1 e2) = align $
-                let' <+> text n <+> equals <+> pretty e1 </> 
-                in' </> 
-                     indent 2 (pretty e2) <$$> 
+                let' <+> text n <+> equals <+> pretty e1 </>
+                in' </>
+                     indent 2 (pretty e2) <$$>
                 end'
             where
               [let', in', end'] = map (yellow . text) ["let", "in", "end"]
 
-        pp (Case e1 alts) = align $ 
+        pp (Case e1 alts) = align $
            case' <+> pretty e1 <+> of' <+> lbrace <> line <>
                indent 4 (vsep (map ppAlt alts)) <> line <>
            rbrace
-            where 
+            where
               [case', of'] = map yellow ["case", "of"]
               ppAlt (p, e) = pretty p <+> blue "=>" <+> pretty e
 
         pp (Ann e t) = parens (pretty e <+> colon <+> pretty t)
 
 instance Pretty Ty where
-  pretty = hsep . intersperse arrow . map (hsep . map pp . unfoldApp) . unfoldArr 
+  pretty = hsep . intersperse arrow . map (hsep . map pp . unfoldApp) . unfoldArr
     where
       unfoldArr (AppT (AppT (LitT "->") t1) t2) = t1 : unfoldArr t2
       unfoldArr t = [t]
-                    
+
       unfoldApp t@(AppT (AppT (LitT "->") _) _) = [t]
       unfoldApp (AppT t1 t2) = unfoldApp t1 ++ [t2]
       unfoldApp t = [t]
