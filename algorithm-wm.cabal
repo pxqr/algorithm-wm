@@ -49,3 +49,4 @@ executable algorithm-wm
   hs-source-dirs:    src
 
   extensions:        PatternGuards
+  ghc-options:       -Wall

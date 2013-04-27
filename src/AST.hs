@@ -6,8 +6,8 @@ module AST ( Literal(..), Exp(..), Pat(..), Alt, Ty(..), Kind(..), Scheme(..)
            , generalize, renameScheme
            ) where
 
-import Data.List
-import Data.Char
+import Data.List as L
+import Data.Maybe
 import Data.Monoid
 import qualified Data.Set as S
 import Data.Set (Set)
@@ -68,27 +68,56 @@ class Term t t' | t -> t' where
   freeVars :: t -> Set Name
   subst :: t -> Subst t' -> t
 
+instance Term Name Name where
+  var = id
+  freeVars = S.singleton
+  subst n s = fromMaybe n (L.lookup n s)
+
+instance Term Pat Name where
+  var = VarP
+
+  freeVars  WildP      = S.empty
+  freeVars (LitP _)    = S.empty
+  freeVars (VarP n)    = S.singleton n
+  freeVars (ConP _ fs) = S.fromList fs
+
+  subst  WildP      _ = WildP
+  subst (LitP l)    _ = LitP l
+  subst (VarP n)    s = VarP (subst n s)
+  subst (ConP n fs) s = ConP n (map (`subst`  s) fs)
+
 
 instance Term Exp Exp where
   var   = Var
+  freeVars  Bot    = S.empty
+  freeVars (Lit _) = S.empty
   freeVars (Var n) = S.singleton n
   freeVars (App e1 e2) = freeVars e1 <> freeVars e2
   freeVars (Abs n  e ) = n `S.delete` freeVars e
   freeVars (Let n e1 e2) = freeVars e1 <> freeVars (Abs n e2)
+  freeVars (Ann e _)     = freeVars e
+  freeVars (Case e as)   = freeVars e <> mconcat (map fvAlt as)
+     where
+       fvAlt (p, ex) = freeVars ex `S.difference` freeVars p
 
   subst = error "Term Exp Exp"
 
 
+
 instance Term Ty Ty where
   var = VarT
-  freeVars (LitT _) = S.empty
-  freeVars (VarT n) = S.singleton n
+
+  freeVars (LitT _)     = S.empty
+  freeVars (VarT n)     = S.singleton n
   freeVars (AppT t1 t2) = freeVars t1 <> freeVars t2
+  freeVars (AbsT n t)   = S.delete n (freeVars t )
 
   subst t@(LitT _)     _ = t
   subst t@(VarT n)     s | Just t' <- lookup n s = t'
                          |       otherwise       = t
   subst   (AppT t1 t2) s = AppT (subst t1 s) (subst t2 s)
+  subst   (AbsT n t)   s = subst t ((n, var n) : s)
+    -- WARN or maybe delete _n_ from _s_?
 
 instance Term Kind Kind where
   var = VarK
@@ -102,7 +131,8 @@ instance Term Kind Kind where
   subst   (ArrK k1 k2) s = ArrK (subst k1 s) (subst k2 s)
 
 instance Term a a => Term (Scheme a) a where
---  var = Mono . var
+  var n = Mono (var n)
+
   freeVars (Mono t)   = freeVars t
   freeVars (Poly n p) = n `S.delete` freeVars p
 
@@ -129,7 +159,7 @@ instance Pretty Exp where
         pp    Bot        = pretty (onred "_|_")
         pp   (Lit l)     = pretty l
         pp   (Var n)     = text n
-        pp t@(App e1 e2) = parens (pretty t)
+        pp t@(App _ _)   = parens (pretty t)
         pp   (Abs n e)   = parens (lambda <> text n <> dot <+> pretty e)
             where
               lambda = green (char 'λ')
@@ -193,6 +223,7 @@ renameScheme = go [] (names ++ err)
     where
       go s _ (Mono ty) = Mono (subst ty s)
       go s (x : xs) (Poly n t) = Poly x (go ((n, VarT x) : s) xs t)
+      go _ []       (Poly _ _) = err
 
       names = map return ['a'..'z']
       err = error ("more than " ++ show (length names) ++ "quanifiers? Really?")
