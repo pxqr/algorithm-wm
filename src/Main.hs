@@ -12,10 +12,9 @@ import System.Environment
 import System.Console.ANSI
 
 import AST
-import Eval
 import Module
-import Parser
 import TC
+import Program
 
 
 traceEnvUp :: Context t TyEnv
@@ -35,21 +34,20 @@ ppTyEnv = pretty . reverse . map (uncurry SigD) . mapMaybe tyBind
 --------------------------------------------------------------------------------
 run :: FilePath -> IO ()
 run path = do
-  mm <- parseFile path
+  mm <- parseProgram path
   case mm of
     Left s -> print $ hang 4 ((red "Unable to parse:") </> text (show s))
     Right m -> do
       print $ "Parsed module:" <> line <>
                 indent 4 (pretty m)
-      case checkModule m of
+      case checkProgram m of
         Left err -> print (pretty err)
         Right tyEn -> do
             print $ "Type environment:" <> line <>
                         indent 4 (ppTyEnv tyEn)
-            case evalMain m of
+            case execProgram m of
               Nothing -> putStrLn "There is no main. Nothing to eval."
-              Just va -> print $ "Output:" </>
-                              indent 4 (pretty va)
+              Just va -> print $ "Output:" </> indent 4 (pretty va)
 
 
 main :: IO ()
