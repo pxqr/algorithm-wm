@@ -10,12 +10,10 @@ import Control.Monad.State
 import Control.Monad.Reader
 import Text.PrettyPrint.ANSI.Leijen hiding ((<>), (<$>), empty)
 import Data.Monoid
-import Data.Set (Set)
 import qualified Data.Set as S
 
 import AST
 import Name
-import Unify
 import TC
 import TyError
 
@@ -133,5 +131,7 @@ checkModule m = do
     checkDec env [(FunD n ps e)] = do
       ty <- inferTy (desugar e ps) env
       return ((n, HasType (renameScheme ty)) : env)
+
+    checkDec _ _ = error "checkDec: impossible happen"
 
     desugar = foldr Abs

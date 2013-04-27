@@ -53,7 +53,7 @@ valueToExp = go ['a'..'z']
     where
       go _ (BotV)   = Bot
       go _ (LitV l) = Lit l
-      go _ (ConV n _) = error "value to expr"
+      go _ (ConV _ _) = error "value to expr"
       go (n : ns) (AbsV f) = Abs [n] (go ns (f (LitV (LitChar n))))
       go []   _     = error "value to expr"
 

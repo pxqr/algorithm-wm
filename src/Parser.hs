@@ -95,6 +95,7 @@ exprPrec :: Expr a => String -> OpTable a -> [Parser a] -> Parser a
 exprPrec msg ops atoms = buildExpressionParser ops
     (choice (fmap try (atoms ++ [parens tok expr]))) <?> msg
 
+blockPrec :: String -> [Parser a] -> Parser [a]
 blockPrec msg bs = block (choice (fmap try bs)) <?> msg
 
 conP :: Parser Name
@@ -189,11 +190,11 @@ instance Expr Dec where
     , FunD  <$>  nameP <*> many nameP  <*> (sym "=" *> expr)
     , DataD <$> (sym "data" *> nameP)
             <*> (sym ":"    *> expr)
-            <*> (try (sym "where" *> block conP) <|> pure [])
-
+            <*> (try (sym "where" *> block consP) <|> pure [])
     ]
    where
-     conP = (,) <$> (try nameP <|> newOp) <*> (sym ":" *> expr)
+     consP = (,) <$> (try nameP <|> newOp) <*> (sym ":" *> expr)
+
 
 importP :: Parser ModName
 importP = sym "import" *> modNameP <?> "import"

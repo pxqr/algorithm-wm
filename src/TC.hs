@@ -8,12 +8,11 @@ import Control.Monad.State
 import Control.Monad.Reader
 
 import qualified Data.Set as S
-import Data.Set (Set)
-import Text.PrettyPrint.ANSI.Leijen hiding ((<>), (<$>))
 
 import AST
 import Unify
 import TyError
+
 
 data Info = HasType (Scheme Ty)
           | HasKind Kind
@@ -43,7 +42,7 @@ tyEnv = ask
 
 mapLeft :: (a -> b) -> Either a c -> Either b c
 mapLeft f (Left a)  = Left (f a)
-mapLeft f (Right a) = Right a
+mapLeft _ (Right a) = Right a
 
 withU :: Unifier Ty a -> Context Ty a
 withU = lift . lift . mapStateT (mapLeft UnificationE)
@@ -130,10 +129,12 @@ tyProjPat es t (ConP n names) = do
 --         throwError (ConArityMismatchE es)
 
     return (zip names ts)
-
   where
     unfoldArr :: Ty -> [Ty]
     unfoldArr = undefined
+
+tyProjPat _ _ (LitP _) = error "tyProjPat"
+
 
 
 tyInfW :: Exp -> Context Ty Ty
@@ -184,7 +185,7 @@ tyInfW = tyInf []
              undefined -- foldM unify t ts
              reify t
 
-      go es e0@(Ann e tann) = do
+      go es (Ann e tann) = do
         t <- tyInf es e
         mspec <- withU (tann ||= t)
         unless mspec $ do
@@ -211,7 +212,7 @@ kdInf (AppT t1 t2) = do
     unifyKd k1 (k2 `ArrK` k)
     reify k
 
-kdInf (AbsT n t  ) = do error "kdInf"
+kdInf (AbsT _ _  ) = do error "kdInf"
 --  k1 <- freshKdVar
 --  k2 <- bindLocal n (Mono k1) (kdInf t)
 

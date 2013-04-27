@@ -7,7 +7,6 @@ module Unify (UnifierM, Unifier, UFailure
 import Control.Monad.Error
 import Control.Monad.State
 import qualified Data.Set as S
-import Data.Set (Set)
 import Text.PrettyPrint.ANSI.Leijen
 
 import AST
@@ -29,7 +28,7 @@ ppCxt = vsep . map (\(t1, t2) -> red "while trying to unify" <+> align (pretty t
 
 instance Pretty t => Pretty (UFailure t) where
   pretty (LitMismatchE n1 n2 cxt) =
-    red (text "lit mismatch: ") <+> pretty n1 <+> "/=" <+> pretty n2
+    red (text "lit mismatch: ") <+> pretty n1 <+> "/=" <+> pretty n2 </> ppCxt cxt
 
   pretty (OccChkFailE n t  cxt)  =
     red (text "occur check failed") <+> text n </>
