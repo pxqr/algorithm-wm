@@ -62,7 +62,7 @@ inferTy :: Exp -> TyEnv -> Result (Scheme Ty)
 inferTy e env = runTI env (withDef (tyInfW e >>= generalizeM))
 
 initTyEnv :: TyEnv
-initTyEnv = [ ("->",        HasKind $ ArrK Star Star)
+initTyEnv = [ ("->",        HasKind $ ArrK Star (ArrK Star Star))
             ]
 
 
@@ -85,13 +85,16 @@ checkModule m = do
     groupDec [] = return []
 
 
-    checkCon env (n, hsc) = do
-          runTI env $ do
-            sc <- freshInst hsc >>= generalizeM
-            ty <- freshInst sc
-            isSaturated ty
-            return (n, sc)
+    checkCon env (n, sc) = do
+      runTI env $ do
+        s <- normalizeScheme sc
+        isSaturatedTy s
+        return (n, s)
 
+    checkSigKd env sc = do
+      runTI env $ do
+        s <- normalizeScheme sc
+        isSaturatedTy s
 
     checkNames :: [[Dec]] -> Result ()
     checkNames = foldM_ checkName S.empty . map (decName . head)
@@ -107,10 +110,11 @@ checkModule m = do
         return (map (second HasType) cons' ++ env)
 
     checkDec env [SigD n sc, FunD _ ps e] = do
+      checkSigKd env sc
       ty <- runTI env $ do
         tyAnn <- freshInst sc
         scAnn <- generalizeM tyAnn
-               -- kindCheck t
+
         tyInfW (Ann (desugar e ps) tyAnn)
         return scAnn
 

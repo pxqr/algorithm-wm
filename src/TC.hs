@@ -74,8 +74,13 @@ bindLocal n t = local ((n, HasType t) :)
 bindLocalMany :: Subst (Scheme Ty) -> Context t a -> Context t a
 bindLocalMany bs = local (map (second HasType) bs ++)
 
---bindKindLocal :: Name -> Scheme -> Context a -> Context a
---bindKindLocal n t = local ((n, HasType t) :)
+bindKinds :: Scheme Ty -> (Ty -> Context t a) -> Context t a
+bindKinds sc a = go sc
+  where
+    go (Mono t) = a t
+    go (Poly n t) = do
+      k <- freshVar
+      local ((n, HasKind k) :) (go t)
 
 substLocal :: Context Ty a -> Context Ty a
 substLocal cxt = do
@@ -161,7 +166,7 @@ tyInfW = tyInf []
           s1 <- generalizeM t1
           bindLocal n s1 $ tyInf es e2
 
-      go es (Case e1 alts) = do freshVar -- TODO: handle polymorphism properly
+      go es (Case e1 alts) = do freshVar
 {-        t1 <- tyInf es e1
         ts <- forM alts $ uncurry (tyInfAlt t1)
         tyAltsAgree ts
@@ -215,13 +220,14 @@ kdChk t ke = do
   spec <- withUKd $ do
     unifyKd ke ka
     ke' <- reify ke
-    return (ka == ke)
+    return (ka == ke')
 
   unless spec $ do
     throwError (KindMismatchE ka ke t)
   return ()
 
-isSaturated :: Ty -> Context Kind ()
-isSaturated t = do
-  k <- kdInf t
-  when (k /= Star) $ throwError (KindMismatchE k Star t)
+normalizeScheme :: Scheme Ty -> Context t (Scheme Ty)
+normalizeScheme = freshInst >=> generalizeM
+
+isSaturatedTy :: Scheme Ty -> Context Kind ()
+isSaturatedTy sc = bindKinds sc (`kdChk` Star)
