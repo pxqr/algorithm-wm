@@ -17,15 +17,18 @@ source-repository head
 executable algorithm-wm
   main-is:           Main.hs
   other-modules:
-      AST
-    , Eval
-    , Loc
-    , Module
+
+      Loc
     , Name
+    , AST
+    , Module
+    , Program
+
     , Parser
-    , TC
     , TyError
     , Unify
+    , TC
+    , Eval
 
   build-depends:
 
