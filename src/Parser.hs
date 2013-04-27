@@ -7,7 +7,7 @@ import Data.Char
 import Data.Maybe
 import Data.List as L
 import Data.Map as M
-import Text.Parsec as P
+import Text.Parsec as P hiding (optional)
 import Text.Parsec.Language
 import Text.Parsec.Token
 import Text.Parsec.Expr
@@ -195,11 +195,18 @@ instance Expr Dec where
    where
      conP = (,) <$> (try nameP <|> newOp) <*> (sym ":" *> expr)
 
+importP :: Parser ModName
+importP = sym "import" *> modNameP <?> "import"
+
 instance Expr Module where
   expr = exprPrec "module" []
          [ Module <$> (sym "module" *> modNameP <* sym "where")
+                  <*> importsP
                   <*> block expr
          ]
+    where
+      importsP = fromMaybe [] <$> optional (block importP)
+
 
 tyP :: Parser Ty
 tyP = expr
