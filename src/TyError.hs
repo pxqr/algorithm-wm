@@ -2,6 +2,7 @@
 module TyError where
 
 import Control.Monad.Error
+import Data.Monoid
 import Text.PrettyPrint.ANSI.Leijen hiding ((<>))
 
 import AST
@@ -60,9 +61,10 @@ instance Pretty TyError where
                         "with actual kind:" <+> pretty k2 </>
                                  "in type:" <+> pretty t
 
-    pretty (RedefineE n) = blue (text n) <+> "already defined"
-    pretty (ConArityMismatchE e) =
-      ppExpTrace e
+    pretty (RedefineE n) = blue ("\"" <> pretty n <> "\"")
+                             <+> "already defined"
+
+    pretty (ConArityMismatchE e) = ppExpTrace e
     pretty (StrMsg s)           = red (text s)
 
 

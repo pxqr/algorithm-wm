@@ -7,6 +7,7 @@ module REPL
 
 import Control.Applicative ((<$>), some)
 import Control.Monad.State
+import Control.Monad.Error
 import Control.Exception as E
 import Data.Monoid
 import Data.Maybe
@@ -27,8 +28,30 @@ import Program
 import Parser
 import TC
 
+cmdDesc :: String
+cmdDesc =
+  ":quit       - Quit from the repl.\n\
+  \:help thing - Help about the thing.\n\
+  \:set var    - Set repl settings variable.\n\
+  \:load path  - Load module from the path.\n\
+  \:reload     - Reload currently loaded module.\n\
+  \:browse     - Browse currenly loaded module.\n\
+  \:type expr  - Show type of the expression.\n\
+  \:kind type  - Show kind of the type.\n\
+  \:info name  - Show info about the name.\n\
+  \ expr       - Eval expression.\n\
+  \\n\
+  \Every command have short alias consisting of first command letter.\n\
+  \For exsample:\n\
+  \  \":quit\" and \":q\" are the same\n\
+  \  \":load some/path\" and \":l some/path\" are the same"
+
+
+
 
 data Cmd = Quit
+         | Help Cmd
+         | Set    String
          | Load FilePath
          | Reload
          | Browse
@@ -40,14 +63,27 @@ data Cmd = Quit
 
 cmdP :: Parser Cmd
 cmdP = many space >> choice (map P.try
-  [ string ":q"  >> return Quit
-  , string ":l " >> (Load  <$> some anyChar)
-  , string ":t " >> TypeOf <$> inRepl expP
-  , string ":k " >> KindOf <$> inRepl tyP
-  , string ":i " >> InfoOf <$> inRepl nameP
-  , string ":r"  >> return Reload
-  , string ""    >> Eval   <$> inRepl expP
+  [ arglessP "quit"  >> return Quit
+  , do withArgsP "load"
+       (Load  <$> some anyChar)
+         <|> return (Help (Load "path/to/module"))
+  , withArgsP "type"   >> TypeOf <$> inRepl expP
+  , withArgsP "kind"   >> KindOf <$> inRepl tyP
+  , withArgsP "info"   >> InfoOf <$> inRepl nameP
+  , arglessP  "browse" >> return Browse
+  , arglessP  "reload" >> return Reload
+  , arglessP  "help"   >> return (Help (Help undefined))
+  , arglessP ""     >> return (Help (Help undefined))
+  , Eval   <$> inRepl expP
   ])
+  where
+    arglessP name = do
+      char ':'
+      let long  = P.try (string name) >> return ()
+      let short = P.char (head name) >> return ()
+      long <|> short
+
+    withArgsP name = arglessP name >> some space
 
 data Settings = Settings {
     sePrompt     :: String
@@ -132,6 +168,10 @@ trackFile path = do
 quit :: REPL ()
 quit = untrackCurrent
 
+help :: Cmd -> REPL ()
+help (Help ~(Help _)) = liftIO $ putStrLn cmdDesc
+help c = liftIO $ print c
+
 load :: FilePath -> REPL ()
 load path = do
   p  <- parseAll path
@@ -177,15 +217,26 @@ infoOf n = do
     then putStrLn $ "There is no " ++ n
     else mapM_ (print . pretty) info
 
+suppressE :: Cmd -> REPL () -> REPL ()
+suppressE cmd action = catchError action (handler cmd)
+  where
+    handler cmd e = liftIO $ putStrLn ("Error occurred:\n"
+                       ++ show e ++ "\n"
+                       ++ "While executing:\n"
+                       ++ show cmd
+                        )
 
 execCmd :: Cmd -> REPL ()
-execCmd  Quit       = quit
-execCmd (Load path) = load (takeWhile (not . isSpace) path) >> loop
-execCmd (Reload   ) = reload >> loop
-execCmd (Eval   e ) = eval e   >> loop
-execCmd (TypeOf e ) = typeOf e >> loop
-execCmd (KindOf t ) = kindOf t >> loop
-execCmd (InfoOf n ) = infoOf n >> loop
+execCmd c@Quit       = quit
+execCmd   (Help c)   = help c >> loop
+execCmd c@(Load path) = do
+  suppressE c (load (takeWhile (not . isSpace) path))
+  loop
+execCmd c@(Reload   ) = suppressE c reload >> loop
+execCmd c@(Eval   e ) = suppressE c (eval e)   >> loop
+execCmd c@(TypeOf e ) = suppressE c (typeOf e) >> loop
+execCmd c@(KindOf t ) = suppressE c (kindOf t) >> loop
+execCmd c@(InfoOf n ) = suppressE c (infoOf n) >> loop
 
 prompt :: REPL String
 prompt = do
@@ -200,20 +251,16 @@ loop = do
   case parse cmdP ":interactive:" str of
     Left  e   -> liftIO (print e) >> loop
     Right cmd -> do
---      handle (handler cmd) $ do
-        execCmd cmd
-        liftIO (addHistory str)
- where
-   handler :: Cmd -> SomeException -> IO ()
-   handler cmd e = putStrLn ("Error occurred:\n"
-                       ++ show e ++ "\n"
-                       ++ "While executing:\n"
-                       ++ show cmd
-                        )
+      execCmd cmd
+      liftIO (addHistory str)
 
 runRepl :: Settings -> IO ()
-runRepl s =
+runRepl s = do
+  putStrLn "Hi! Type :h or :help for help."
+
   withINotify $ \ino -> do
     let initState = RState s ino Nothing emptyProgram Nothing
     execStateT loop initState
     return ()
+
+  putStrLn "Bye, bye...                         ._."

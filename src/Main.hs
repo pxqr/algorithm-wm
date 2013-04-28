@@ -60,10 +60,7 @@ opts = info (helper <*> argsP)
 
 run :: Args -> IO ()
 run ShowVersion = putStrLn (showVersion version)
-run (Repl s)    = do
-  putStrLn "Hi!"
-  runRepl s
-  putStrLn "Bye, bye...     ._."
+run (Repl s)    = runRepl s
 
 main :: IO ()
 main = execParser opts >>= run
