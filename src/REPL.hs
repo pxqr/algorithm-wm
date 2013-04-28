@@ -190,6 +190,16 @@ reload = do
     Nothing -> liftIO $ putStrLn "No one module loaded."
     Just path -> load path
 
+browse :: REPL ()
+browse = do
+  p <- gets stProgram
+  if isEmptyProgram p then
+      liftIO $ putStrLn "There is nothing to show. Load module with :load."
+    else do
+      liftIO $ print (pretty p)
+      env <- typecheck p
+      liftIO $ print (ppTyEnv env)
+
 eval :: Exp -> REPL ()
 eval e = liftIO $ print e
 
@@ -233,6 +243,7 @@ execCmd c@(Load path) = do
   suppressE c (load (takeWhile (not . isSpace) path))
   loop
 execCmd c@(Reload   ) = suppressE c reload >> loop
+execCmd c@(Browse   ) = suppressE c browse >> loop
 execCmd c@(Eval   e ) = suppressE c (eval e)   >> loop
 execCmd c@(TypeOf e ) = suppressE c (typeOf e) >> loop
 execCmd c@(KindOf t ) = suppressE c (kindOf t) >> loop

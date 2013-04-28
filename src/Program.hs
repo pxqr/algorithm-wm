@@ -1,5 +1,6 @@
 module Program
-       ( Program, emptyProgram
+       ( Program
+       , emptyProgram, isEmptyProgram
        , lookupNamePrg
        , parseProgram, checkProgram, execProgram
        ) where
@@ -21,6 +22,10 @@ instance Pretty Program where
 
 emptyProgram :: Program
 emptyProgram = Program []
+
+isEmptyProgram :: Program -> Bool
+isEmptyProgram (Program []) = True
+isEmptyProgram _            = False
 
 parseProgram :: FilePath -> IO (Either String Program)
 parseProgram path = do
