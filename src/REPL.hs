@@ -19,7 +19,7 @@ import Text.PrettyPrint.ANSI.Leijen ((</>), (<+>),
 import qualified Text.PrettyPrint.ANSI.Leijen as PP
 
 import System.INotify
-import System.Console.Readline
+import qualified System.Console.Haskeline as Line
 import System.Console.ANSI
 
 import AST
@@ -102,7 +102,7 @@ data RState = RState {
   , stCurrent  :: Maybe FilePath
   }
 
-type REPL = StateT RState IO
+type REPL = StateT RState (Line.InputT IO)
 
 ppTyEnv :: TyEnv -> Doc
 ppTyEnv = pretty . reverse . map (uncurry SigD) . mapMaybe tyBind
@@ -201,7 +201,7 @@ browse = do
       liftIO $ print (ppTyEnv env)
 
 eval :: Exp -> REPL ()
-eval e = liftIO $ print e
+eval = typeOf
 
 typeOf :: Exp -> REPL ()
 typeOf e = do
@@ -228,8 +228,9 @@ infoOf n = do
     else mapM_ (print . pretty) info
 
 suppressE :: Cmd -> REPL () -> REPL ()
-suppressE cmd action = catchError action (handler cmd)
+suppressE cmd action = Line.catch action (handler cmd)
   where
+    handler :: Cmd -> IOException -> REPL ()
     handler cmd e = liftIO $ putStrLn ("Error occurred:\n"
                        ++ show e ++ "\n"
                        ++ "While executing:\n"
@@ -251,7 +252,7 @@ execCmd c@(InfoOf n ) = suppressE c (infoOf n) >> loop
 
 prompt :: REPL String
 prompt = do
-  mstr <- liftIO $ readline "*> "
+  mstr <- lift $ Line.getInputLine "*> "
   case mstr of
     Just str | not (all isSpace str) -> return str
     _ -> prompt
@@ -261,9 +262,7 @@ loop = do
   str <- prompt
   case parse cmdP ":interactive:" str of
     Left  e   -> liftIO (print e) >> loop
-    Right cmd -> do
-      execCmd cmd
-      liftIO (addHistory str)
+    Right cmd -> execCmd cmd
 
 runRepl :: Settings -> IO ()
 runRepl s = do
@@ -271,7 +270,7 @@ runRepl s = do
 
   withINotify $ \ino -> do
     let initState = RState s ino Nothing emptyProgram Nothing
-    execStateT loop initState
+    Line.runInputT Line.defaultSettings $ execStateT loop initState
     return ()
 
   putStrLn "Bye, bye...                         ._."

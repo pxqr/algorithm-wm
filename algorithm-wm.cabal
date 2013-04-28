@@ -50,7 +50,7 @@ executable algorithm-wm
     , ansi-wl-pprint
     , ansi-terminal
     , hinotify
-    , readline
+    , haskeline
     , optparse-applicative
 
   hs-source-dirs:    src
