@@ -178,7 +178,7 @@ tyInfW = tyInf []
         f  <- freshVar
         withU $ do
           t1' <- reify t1
-          unify t1' (t2 .-> f)
+          unify (t2 .-> f) t1'
           reify f
 
       go es (Let n e1 e2) = do

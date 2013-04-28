@@ -51,8 +51,12 @@ type Unifier t = UnifierM t (UResult t)
 bindVar :: Name -> t -> Unifier t ()
 bindVar n t = modify ((n, t) :)
 
-reify :: Term t t => t -> Unifier t t
-reify = gets . subst
+reify :: Eq t => Term t t => t -> Unifier t t
+reify = gets . go
+  where
+    go t s = let t' = subst t s in
+      if t == t' then t else go t' s
+
 
 --class Unifiable u where
 --  unify :: u -> u -> Unifier u ()
@@ -62,6 +66,13 @@ unify _t1 _t2 = go [(_t1, _t2)] _t1 _t2
     where
       go _   (LitT n)     (LitT n')    |  n == n'  = return ()
 
+      go cxt (VarT n)      (VarT  m)
+        | n == m    = return ()
+        | otherwise = do return ()
+--          assignVar cxt n (VarT m)
+--          assignVar cxt m (VarT n)
+
+
       go cxt t            (VarT n)     = assignVar cxt n t
       go cxt (VarT n)     t            = assignVar cxt n t
 
@@ -69,15 +80,16 @@ unify _t1 _t2 = go [(_t1, _t2)] _t1 _t2
         go ((t1, t3) : cxt) t1 t3
         t2' <- reify t2
         t4' <- reify t4
-        go ((t2, t4) : cxt) t2' t4'
+        go ((t2', t4') : cxt) t2' t4'
 
       go cxt t1           t2 = throwError (UFailureE t1 t2 cxt)
 
       assignVar :: UTrace -> Name -> Ty -> Unifier Ty ()
+      assignVar _ n (VarT n')
+        | n == n'   = return ()
       assignVar cxt n t
-          | VarT n' <- t, n == n'   = return ()
-          | n `S.member` freeVars t = throwError (OccChkFailE n t cxt)
-          |       otherwise         = bindVar n t
+        | n `S.member` freeVars t = throwError (OccChkFailE n t cxt)
+        |       otherwise         = reify t >>= bindVar n
 
 (||=) :: Ty -> Ty -> Unifier Ty Bool
 t1 ||= t2 = do

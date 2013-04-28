@@ -1,6 +1,6 @@
 module Program
        ( Program
-       , emptyProgram, isEmptyProgram
+       , emptyProgram, isEmptyProgram, moduleNames
        , lookupNamePrg, addDec
        , parseProgram, checkProgram, execProgram, execName
        ) where
@@ -27,6 +27,9 @@ emptyProgram = Program []
 isEmptyProgram :: Program -> Bool
 isEmptyProgram (Program []) = True
 isEmptyProgram _            = False
+
+moduleNames :: Program -> [ModName]
+moduleNames p = map modName (getProgram p)
 
 parseProgram :: FilePath -> IO (Either ParseError Program)
 parseProgram path = do

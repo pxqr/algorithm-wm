@@ -222,6 +222,10 @@ load path = do
   te <- typecheck p
   printTyEnv te
   modify (\st-> st { stProgram = p, stCurrent = Just path })
+
+  liftIO $ print (PP.green "Ok, loaded modules:" <+>
+                  PP.hsep (PP.punctuate PP.comma (map pretty (moduleNames p))))
+
   untrackCurrent
   trackFile path
 

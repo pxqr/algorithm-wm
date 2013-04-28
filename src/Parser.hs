@@ -144,7 +144,9 @@ varP = tyVarP
 
 instance Expr Exp where
   expr = fmap (L.foldl1 App) $ some $ sameOrIndented
-           >> exprPrec "expression" []
+           >> exprPrec "expression"
+    [
+    ]
     [ Bot  <$  sym "_|_"
     , Lit  <$> expr
     , Var  <$> varP
@@ -153,7 +155,7 @@ instance Expr Exp where
            <*> (sym "in"  *> expr <* reserved tok "end")
     , Case <$> (sym "case" *> expr)
            <*> (sym "of"   *> block altP)
-    , Abs  <$> (sym "\\"   *> nameP)
+    , Abs  <$> (sym "\\"   *> varP)
            <*> (sym "."    *> expr)
     ]
 
@@ -183,6 +185,8 @@ instance Expr Ty where
              exprPrec "type" []
                [ LitT <$> tyLitP
                , VarT <$> tyVarP
+               , AbsT <$> (sym "\\" *> tyVarP)
+                      <*> (sym "."  *> expr)
                ]
 
 instance Expr Kind where
