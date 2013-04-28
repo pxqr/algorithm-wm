@@ -1,20 +1,25 @@
 module Program
-       ( Program
+       ( Program, emptyProgram
+       , lookupNamePrg
        , parseProgram, checkProgram, execProgram
        ) where
 
 import Text.PrettyPrint.ANSI.Leijen hiding ((<>), (<$>), empty)
 
+import Eval
 import Module
+import Name
 import Parser
 import TC
-import Eval
 
 
 newtype Program = Program { getProgram :: [Module] }
 
 instance Pretty Program where
   pretty = vsep . punctuate linebreak . map pretty . getProgram
+
+emptyProgram :: Program
+emptyProgram = Program []
 
 parseProgram :: FilePath -> IO (Either String Program)
 parseProgram path = do
@@ -28,3 +33,6 @@ checkProgram = checkModule . head . getProgram
 
 execProgram :: Program -> Maybe Value
 execProgram = evalMain . head . getProgram
+
+lookupNamePrg :: Name -> Program -> [Dec]
+lookupNamePrg n = concatMap (lookupNameM n) . getProgram

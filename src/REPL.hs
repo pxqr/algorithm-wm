@@ -57,6 +57,8 @@ data RState = RState {
 
   , stINotify  :: INotify
   , stWD       :: Maybe WatchDescriptor
+
+  , stProgram  :: Program
   }
 
 type REPL = StateT RState IO
@@ -102,19 +104,21 @@ quit :: REPL ()
 quit = untrackCurrent
 
 load :: FilePath -> REPL ()
-load path = liftIO $ do
-  mm <- parseProgram path
+load path = do
+  mm <- liftIO $ parseProgram path
   case mm of
-    Left s -> print $ PP.hang 4 ((PP.red "Unable to parse:") </> PP.text (show s))
-    Right m -> do
-      print $ "Parsed module:" <> line <>
-                indent 4 (pretty m)
-      case checkProgram m of
-        Left err -> print (pretty err)
+    Left s -> liftIO $ print $
+       PP.hang 4 ((PP.red "Unable to parse:") </> PP.text (show s))
+    Right p -> do
+      liftIO $ print $ "Parsed module:" <> line <>
+                indent 4 (pretty p)
+      case checkProgram p of
+        Left err -> liftIO $ print (pretty err)
         Right tyEn -> do
-            print $ "Type environment:" <> line <>
+            liftIO $ print $ "Type environment:" <> line <>
                         indent 4 (ppTyEnv tyEn)
-            case execProgram m of
+            modify (\st-> st { stProgram = p })
+            liftIO $ case execProgram p of
               Nothing -> putStrLn "There is no main. Nothing to eval."
               Just va -> print $ "Output:" </> indent 4 (pretty va)
 
@@ -128,7 +132,9 @@ kindOf :: Ty -> REPL ()
 kindOf t = liftIO $ print t
 
 infoOf :: Name -> REPL ()
-infoOf n = liftIO $ print n
+infoOf n = do
+  p <- gets stProgram
+  liftIO $ mapM_ (print . pretty) (lookupNamePrg n p)
 
 execCmd :: Cmd -> REPL ()
 execCmd  Quit       = quit
@@ -165,5 +171,6 @@ loop = do
 runRepl :: Settings -> IO ()
 runRepl s =
   withINotify $ \ino -> do
-    execStateT loop (RState s ino Nothing)
+    let initState = RState s ino Nothing emptyProgram
+    execStateT loop initState
     return ()

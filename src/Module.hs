@@ -1,6 +1,7 @@
 {-# LANGUAGE OverloadedStrings#-}
 module Module ( Module(..), Dec(..)
-              , decName, checkModule
+              , decName, lookupNameM
+              , checkModule
               ) where
 
 import Control.Arrow (second)
@@ -8,9 +9,10 @@ import Control.Applicative
 import Control.Monad.Error
 import Control.Monad.State
 import Control.Monad.Reader
-import Text.PrettyPrint.ANSI.Leijen hiding ((<>), (<$>), empty)
+import Data.Maybe
 import Data.Monoid
 import qualified Data.Set as S
+import Text.PrettyPrint.ANSI.Leijen hiding ((<>), (<$>), empty)
 
 import AST
 import Name
@@ -57,6 +59,11 @@ decName (DataD n _ _) = n
 decName (SigD  n _)   = n
 decName (FunD  n _ _) = n
 
+lookupNameM :: Name -> Module -> [Dec]
+lookupNameM n = mapMaybe getInfo . modDecs
+  where
+    getInfo d | decName d == n = Just d
+              |    otherwise   = Nothing
 
 initTyEnv :: TyEnv
 initTyEnv = [ ("->",        HasKind $ ArrK Star (ArrK Star Star))
