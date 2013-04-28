@@ -4,12 +4,14 @@ module REPL
        ( REPL, Settings(..)
        , runRepl
        , cmdP
+       , humanInput, putHumanLike
        ) where
 
 import Control.Applicative ((<$>), some)
 import Control.Monad.State
 import Control.Monad.Error
 import Control.Exception as E
+import Control.Concurrent
 import Data.Monoid
 import Data.Maybe
 import Data.Char
@@ -23,6 +25,8 @@ import qualified Text.PrettyPrint.ANSI.Leijen as PP
 import System.INotify
 import qualified System.Console.Haskeline as Line
 import System.Console.ANSI
+import System.IO
+import System.Random
 
 import AST
 import Module
@@ -157,7 +161,9 @@ printTyEnv tyEn = do
     print $ "Type environment:" <> line <> indent 4 (ppTyEnv tyEn)
 
 untrackCurrent :: REPL ()
-untrackCurrent = gets stWD >>= liftIO . untrackWD
+untrackCurrent = do
+    gets stWD >>= liftIO . untrackWD
+    modify (\st -> st { stWD = Nothing })
   where
     untrackWD Nothing   = return ()
     untrackWD (Just wd) = removeWatch wd
@@ -165,21 +171,38 @@ untrackCurrent = gets stWD >>= liftIO . untrackWD
 trackFile :: FilePath -> REPL ()
 trackFile path = do
     ino <- gets stINotify
-
-    liftIO $ addWatch ino [Modify] path handler
+    st  <- get
+    liftIO $ addWatch ino [Modify] path (handler st)
     return ()
   where
-    handler Modified { isDirectory = False, maybeFilePath = Nothing  } = do
-      clearFromCursorToScreenBeginning
---      load path
-    handler e = putStrLn $ "warning: skipping event " ++ show e
-    --
+    handler st Modified { isDirectory = False, maybeFilePath = Nothing  } = do
+      inIO st (suppressE Reload reload)
+
+    handler _ e = putStrLn $ "warning: skipping event " ++ show e
+
+type HumanInput = [(Char, Int)]
+
+humanInput :: String -> IO HumanInput
+humanInput str = forM str $ \c -> do
+  let msec = 1000
+  del <- randomRIO (10 * msec, 100 * msec)
+  return (c, del)
+
+putHumanLike :: String -> REPL ()
+putHumanLike str = do
+  hi <- liftIO $ humanInput str
+  forM_ hi $ \(c, d) -> do
+    liftIO $ threadDelay d
+    lift $ Line.outputStr [c]
 
 quit :: REPL ()
 quit = untrackCurrent
 
 help :: Cmd -> REPL ()
-help (Help ~(Help _)) = liftIO $ putStrLn cmdDesc
+help (Help ~(Help _)) = do
+  putHumanLike "Ok, I help you this time...\n"
+  liftIO $ putStrLn cmdDesc
+
 help c = liftIO $ print c
 
 load :: FilePath -> REPL ()
@@ -192,6 +215,8 @@ load path = do
   liftIO $ case execProgram p of
     Nothing -> putStrLn "There is no main. Nothing to eval."
     Just va -> print $ "Output:" </> indent 4 (pretty va)
+  untrackCurrent
+  trackFile path
 
 reload :: REPL ()
 reload = do
@@ -276,13 +301,17 @@ loop = do
     Left  e   -> liftIO (print e) >> loop
     Right cmd -> execCmd cmd
 
+inIO :: RState -> REPL () -> IO ()
+inIO s r = Line.runInputTBehavior (Line.useFileHandle stdin)
+             Line.defaultSettings $ evalStateT r s
+
 runRepl :: Settings -> IO ()
 runRepl s = do
   putStrLn "Hi! Type :h or :help for help."
 
   withINotify $ \ino -> do
     let initState = RState s ino Nothing emptyProgram Nothing
-    Line.runInputT Line.defaultSettings $ execStateT loop initState
+    inIO initState $ loop
     return ()
 
   putStrLn "Bye, bye...                         ._."

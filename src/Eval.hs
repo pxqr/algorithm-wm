@@ -25,7 +25,6 @@ data ExpC = BotC
           | LitC  Literal
           | Free  {-# UNPACK #-} !GlIx
           | Bnd   {-# UNPACK #-} !LcIx
-          | ConC  Name
           | AbsC  ExpC
           | AppC  ExpC ExpC
           | CaseC ExpC [AltC]
@@ -53,12 +52,19 @@ valueToExp = go ['a'..'z']
     where
       go _ (BotV)   = Bot
       go _ (LitV l) = Lit l
-      go _ (ConV _ _) = error "value to expr"
+      go _ v@(ConV "Cons" (LitV (LitChar _) : _)) = Lit $ LitStr (foldStr v)
+        where
+          foldStr :: Value -> String
+          foldStr (ConV "Cons" (LitV (LitChar x) : [xs])) = x : foldStr xs
+          foldStr (ConV "Nil" []) = ""
+          foldStr _ = error "valueToExp.foldStr: not typecheck expr"
+
+      go ns (ConV n fs) = foldl App (Lit (LitCon n)) (map (go ns) fs)
       go (n : ns) (AbsV f) = Abs [n] (go ns (f (LitV (LitChar n))))
       go []   _     = error "value to expr"
 
 instance Pretty Value where
-    pretty = pretty . valueToExp
+  pretty = pretty . valueToExp
 
 
 type Stack = [Value]
@@ -84,26 +90,28 @@ link defs = V.fromList (map (toExpC [] . snd) defs)
     toExpC local (Let n e1 e2) = toExpC local (App (Abs n e2) e1)
     toExpC local (Case e alts) = CaseC (toExpC local e) (map mkAlt alts)
         where
-          mkAlt (p, e) = (p, bindPat p e)
+          mkAlt (p, e') = (p, bindPat p e')
 
-          bindPat  WildP      e = toExpC local e
-          bindPat (LitP _)    e = toExpC local e
-          bindPat (VarP n)    e = toExpC local (Abs n e)
-          bindPat (ConP n ns) e = toExpC local (foldr Abs e ns)
+          bindPat  WildP      e' = toExpC local e'
+          bindPat (LitP _)    e' = toExpC local e'
+          bindPat (VarP n)    e' = toExpC local (Abs n e')
+          bindPat (ConP _ ns) e' = toExpC local (foldr Abs e' ns)
 
     toExpC local (Ann e _)     = toExpC local e
 
 apply :: Value -> Value -> Value
 apply  BotV    _ = BotV
 apply (AbsV f) v = f v
-apply v1       a = error ("Unable to apply " ++ show (pretty v1) ++ show (pretty a))
+apply (ConV n fs) v = ConV n (fs ++ [v])
+apply v1       a = error $ "Unable to apply " ++ show (pretty v1) ++ " "
+                        ++ "to " ++ show (pretty a)
 
 eval :: EvEnv -> Stack -> ExpC -> Value
-eval _   s  BotC       = BotV
-eval _   s (LitC l)    = LitV l
+eval _   _  BotC       = BotV
+eval _   _ (LitC (LitCon n)) = ConV n []
+eval _   _ (LitC l)    = LitV l
 eval env s (Free ix)   = eval env s (V.unsafeIndex env ix)
-eval env s (Bnd  ix)   = s !! ix
-eval env s (ConC n)    = ConV n [] -- ERROR TODO
+eval _   s (Bnd  ix)   = s !! ix
 eval env s (AbsC e)    = AbsV (\x -> eval env (x : s) e)
 eval env s (AppC e1 e2) = apply (eval env s e1) (eval env s e2)
 eval env s (CaseC e1   alts) = case eval env s e1 of
@@ -118,7 +126,7 @@ eval env s (CaseC e1   alts) = case eval env s e1 of
       match :: Value -> Pat -> Maybe [Value]
       match _              WildP        = Just []
       match (LitV v)      (LitP l)      | v `matchLit` l = Just []  where matchLit = (==)
-      match v             (VarP n)      = Just [v]
+      match v             (VarP _)      = Just [v]
       match (ConV en evs) (ConP pn pns) | en == pn =
            if length evs == length pns then Just evs
            else error ("EVAL: Con arity mismatch " ++ show (pretty evs) ++ " " ++ show pns)

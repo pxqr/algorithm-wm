@@ -17,6 +17,7 @@ import Name
 
 data Literal = LitInt  Int
              | LitChar Char
+             | LitStr String -- used only for pretty printing
              | LitCon  Name
                deriving (Show, Eq)
 
@@ -142,6 +143,7 @@ instance Term a a => Term (Scheme a) a where
 instance Pretty Literal where
     pretty (LitInt i)  = cyan (int i)
     pretty (LitChar c) = cyan (char '\'' <> char c <> char '\'')
+    pretty (LitStr s)  = yellow ("\"" <> text s <> "\"")
     pretty (LitCon  n) = blue (text n)
 
 instance Pretty Pat where
@@ -181,6 +183,7 @@ instance Pretty Exp where
               ppAlt (p, e) = pretty p <+> blue "=>" <+> pretty e
 
         pp (Ann e t) = parens (pretty e <+> colon <+> pretty t)
+
 
 instance Pretty Ty where
   pretty = hsep . intersperse arrow . map (hsep . map pp . unfoldApp) . unfoldArr

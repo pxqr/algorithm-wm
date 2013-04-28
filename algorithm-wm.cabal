@@ -52,6 +52,7 @@ executable algorithm-wm
     , hinotify
     , haskeline
     , optparse-applicative
+    , random
 
   hs-source-dirs:    src
 

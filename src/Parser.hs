@@ -28,6 +28,7 @@ strKeywords :: [String]
 strKeywords = [ "let",  "in", "end"
               , "case", "of", "end"
               , "data"
+              , "_"
               ]
 
 opKeywords :: [String]
@@ -124,7 +125,7 @@ patConP = tyLitP
 
 
 instance Expr Pat where
-  expr = exprPrec "pattern" []
+  expr = sameOrIndented >> exprPrec "pattern" []
     [ WildP <$  sym "_"
     , ConP  <$> patConP <*> some patVarP
     , LitP  <$> expr
