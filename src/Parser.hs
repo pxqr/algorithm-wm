@@ -1,4 +1,9 @@
-module Parser where
+module Parser
+       ( parseFile
+
+       -- * for REPL
+       , nameP, expP, tyP, kindP, inRepl
+       ) where
 
 import Control.Applicative hiding (many, (<|>))
 import Control.Monad.Identity
@@ -12,10 +17,12 @@ import Text.Parsec.Language
 import Text.Parsec.Token
 import Text.Parsec.Expr
 import Text.Parsec.Indent
+import qualified Text.Parsec.String as S
 
-import Module
 import AST
+import Module
 import Name
+
 
 strKeywords :: [String]
 strKeywords = [ "let",  "in", "end"
@@ -209,6 +216,9 @@ instance Expr Module where
       importsP = fromMaybe [] <$> optional (block importP)
 
 
+expP :: Parser Exp
+expP = expr
+
 tyP :: Parser Ty
 tyP = expr
 
@@ -228,3 +238,13 @@ parseFile :: String -> IO (Either ParseError Module)
 parseFile path = do
   src <- readFile path
   return (runIndent path (runParserT fileP M.empty path src))
+
+
+inRepl :: Parser a -> S.Parser a
+inRepl p = do
+  s <- many anyChar
+  let path = ":interactive:"
+  let res  = runIndent path (runParserT p M.empty path s)
+  case res of
+    Left e  -> fail (show e)
+    Right r -> return r

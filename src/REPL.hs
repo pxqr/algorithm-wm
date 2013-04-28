@@ -2,6 +2,7 @@
 module REPL
        ( REPL, Settings(..)
        , runRepl
+       , cmdP
        ) where
 
 import Control.Applicative ((<$>), some)
@@ -9,6 +10,7 @@ import Control.Monad.State
 import Control.Exception as E
 import Data.Monoid
 import Data.Maybe
+import Data.Char
 import Text.Parsec as P
 import Text.Parsec.String
 import Text.PrettyPrint.ANSI.Leijen ((</>), indent, pretty, line, Doc)
@@ -18,27 +20,29 @@ import System.INotify
 import System.Console.Readline
 import System.Console.ANSI
 
-
-import TC
+import AST
 import Module
 import Program
+import Parser
+import TC
 
 
 data Cmd = Quit
          | Load FilePath
-         | Eval
-         | TypeOf
-         | KindOf
-         | InfoOf
+         | Eval   Exp
+         | TypeOf Exp
+         | KindOf Ty
+         | InfoOf Name
            deriving Show
 
 cmdP :: Parser Cmd
 cmdP = many space >> choice (map P.try
   [ string ":q"  >> return Quit
   , string ":l " >> (Load <$> some anyChar)
-  , string ":t " >> return TypeOf
-  , string ":k " >> return KindOf
-  , string ":i " >> return InfoOf
+  , string ":t " >> TypeOf <$> inRepl expP
+  , string ":k " >> KindOf <$> inRepl tyP
+  , string ":i " >> InfoOf <$> inRepl nameP
+  , string ""    >> Eval   <$> inRepl expP
   ])
 
 data Settings = Settings {
@@ -114,29 +118,32 @@ load path = liftIO $ do
               Nothing -> putStrLn "There is no main. Nothing to eval."
               Just va -> print $ "Output:" </> indent 4 (pretty va)
 
-eval :: REPL ()
-eval = liftIO $ print "eval"
+eval :: Exp -> REPL ()
+eval e = liftIO $ print e
 
-typeOf :: REPL ()
-typeOf = liftIO $ print "type of"
+typeOf :: Exp -> REPL ()
+typeOf e = liftIO $ print e
 
-kindOf :: REPL ()
-kindOf = liftIO $ print "kind of"
+kindOf :: Ty -> REPL ()
+kindOf t = liftIO $ print t
 
+infoOf :: Name -> REPL ()
+infoOf n = liftIO $ print n
 
 execCmd :: Cmd -> REPL ()
 execCmd  Quit       = quit
-execCmd (Load path) = load path >> loop
-execCmd (Eval     ) = eval >> loop
-execCmd (TypeOf   ) = typeOf >> loop
-execCmd (KindOf   ) = kindOf >> loop
+execCmd (Load path) = load (takeWhile (not . isSpace) path) >> loop
+execCmd (Eval   e ) = eval e   >> loop
+execCmd (TypeOf e ) = typeOf e >> loop
+execCmd (KindOf t ) = kindOf t >> loop
+execCmd (InfoOf n ) = infoOf n >> loop
 
 prompt :: REPL String
 prompt = do
   mstr <- liftIO $ readline "*> "
   case mstr of
-    Nothing -> prompt
-    Just str -> return str
+    Just str | not (all isSpace str) -> return str
+    _ -> prompt
 
 loop :: REPL ()
 loop = do
