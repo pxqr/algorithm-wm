@@ -1,5 +1,6 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE DeriveDataTypeable #-}
+{-# LANGUAGE RankNTypes #-}
 module REPL
        ( REPL, Settings(..)
        , runRepl
@@ -66,6 +67,14 @@ data Cmd = Quit
          | KindOf Ty
          | InfoOf Name
            deriving Show
+
+instance PP.Pretty Cmd where
+  pretty Quit = "quit"
+  pretty (Help cmd) = "help" <+> pretty cmd
+  pretty (Eval e)   = "eval" <+> pretty e
+  pretty (TypeOf e) = "type of" <+> pretty e
+  pretty (KindOf t) = "kind of" <+> pretty t
+  pretty cmd        = PP.text (show cmd)
 
 cmdP :: Parser Cmd
 cmdP = many space >> choice (map P.try
@@ -176,7 +185,8 @@ trackFile path = do
     return ()
   where
     handler st Modified { isDirectory = False, maybeFilePath = Nothing  } = do
-      inIO st (suppressE Reload reload)
+      putStrLn "Note that file change so might like to reload it..."
+
 
     handler _ e = putStrLn $ "warning: skipping event " ++ show e
 
@@ -212,9 +222,6 @@ load path = do
   te <- typecheck p
   printTyEnv te
   modify (\st-> st { stProgram = p, stCurrent = Just path })
-  liftIO $ case execProgram p of
-    Nothing -> putStrLn "There is no main. Nothing to eval."
-    Just va -> print $ "Output:" </> indent 4 (pretty va)
   untrackCurrent
   trackFile path
 
@@ -236,7 +243,16 @@ browse = do
       liftIO $ print (ppTyEnv env)
 
 eval :: Exp -> REPL ()
-eval = typeOf
+eval e = do
+  let interactiveName = "it"
+  prg <- gets (flip addDec (FunD interactiveName [] e) . stProgram)
+  env <- typecheck prg
+  let val = fromMaybe fatalError (execName interactiveName prg)
+  let ty  = either fatalError id (inferTy e env)
+  liftIO $ print $ pretty val <+> PP.colon <+> pretty ty
+ where
+   fatalError :: forall a . a
+   fatalError = error "REPL.eval: impossible happen"
 
 typeOf :: Exp -> REPL ()
 typeOf e = do
@@ -270,7 +286,7 @@ suppressE cmd action = Line.catch action (handler cmd)
        PP.red (PP.text "Error occurred:") <> PP.line <>
          PP.indent 2 (pretty e) <> PP.line <>
        PP.red (PP.text "While executing:") <> PP.line <>
-         PP.indent 2 (PP.text (show cmd))
+         PP.indent 2 (pretty cmd)
 
 
 
@@ -302,8 +318,7 @@ loop = do
     Right cmd -> execCmd cmd
 
 inIO :: RState -> REPL () -> IO ()
-inIO s r = Line.runInputTBehavior (Line.useFileHandle stdin)
-             Line.defaultSettings $ evalStateT r s
+inIO s r = Line.runInputT Line.defaultSettings $ evalStateT r s
 
 runRepl :: Settings -> IO ()
 runRepl s = do

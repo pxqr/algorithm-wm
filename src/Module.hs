@@ -1,5 +1,6 @@
 {-# LANGUAGE OverloadedStrings#-}
 module Module ( Module(..), Dec(..)
+              , interactiveModule, addDecToMod
               , decName, lookupNameM
               , checkModule
               ) where
@@ -65,6 +66,12 @@ lookupNameM n = mapMaybe getInfo . modDecs
     getInfo d | (n ==) `any` decName d = Just d
               | otherwise              = Nothing
 
+
+interactiveModule :: Dec -> Module
+interactiveModule d = Module (ModName "REPL.Interactive") [] [d]
+
+addDecToMod :: Dec -> Module -> Module
+addDecToMod d m = m { modDecs = modDecs m ++ [d] }
 
 initTyEnv :: TyEnv
 initTyEnv = [ ("->",        HasKind $ ArrK Star (ArrK Star Star))

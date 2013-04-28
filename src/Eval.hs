@@ -1,5 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
-module Eval (evalMain, Value) where
+module Eval (evalName, Value) where
 
 import Control.Applicative
 import Data.Maybe
@@ -58,6 +58,13 @@ valueToExp = go ['a'..'z']
           foldStr (ConV "Cons" (LitV (LitChar x) : [xs])) = x : foldStr xs
           foldStr (ConV "Nil" []) = ""
           foldStr _ = error "valueToExp.foldStr: not typecheck expr"
+
+      go _ v@(ConV "Z" []) = Lit (LitInt 0)
+      go _ v@(ConV "S" [n]) = Lit (LitInt (succ (foldNat n)))
+        where
+          foldNat (ConV "Z" []) = 0
+          foldNat (ConV "S" [x]) = foldNat x
+          foldNat _              = error "value to expr"
 
       go ns (ConV n fs) = foldl App (Lit (LitCon n)) (map (go ns) fs)
       go (n : ns) (AbsV f) = Abs [n] (go ns (f (LitV (LitChar n))))
@@ -135,12 +142,8 @@ eval env s (CaseC e1   alts) = case eval env s e1 of
       errNonExhaustive = error ("Non-exhaustive patterns\n" ++ show (pretty (CaseC e1 alts)))
 
 
-
-entryName :: Name
-entryName = "main"
-
-evalMain :: Module -> Maybe Value
-evalMain m = eval prg [] . (prg V.!) <$> (entryName `elemIndex`  (map fst defs))
+evalName :: Name -> Module -> Maybe Value
+evalName entryName m = eval prg [] . (prg V.!) <$> (entryName `elemIndex`  (map fst defs))
     where
       prg :: EvEnv
       prg = link defs

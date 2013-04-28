@@ -1,8 +1,8 @@
 module Program
        ( Program
        , emptyProgram, isEmptyProgram
-       , lookupNamePrg
-       , parseProgram, checkProgram, execProgram
+       , lookupNamePrg, addDec
+       , parseProgram, checkProgram, execProgram, execName
        ) where
 
 import Control.Applicative
@@ -38,8 +38,15 @@ parseProgram path = do
 checkProgram :: Program -> Result TyEnv
 checkProgram p = concat <$> mapM checkModule (getProgram p)
 
+execName :: Name -> Program -> Maybe Value
+execName n = evalName n . head . getProgram
+
 execProgram :: Program -> Maybe Value
-execProgram = evalMain . head . getProgram
+execProgram = execName "main"
+
+addDec :: Program -> Dec -> Program
+addDec (Program []) d = Program [interactiveModule d]
+addDec (Program (x : xs)) d = Program (addDecToMod d x : xs)
 
 lookupNamePrg :: Name -> Program -> [Dec]
 lookupNamePrg n = concatMap (lookupNameM n) . getProgram
