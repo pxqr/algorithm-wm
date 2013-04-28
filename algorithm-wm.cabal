@@ -18,8 +18,8 @@ executable algorithm-wm
   main-is:           Main.hs
   other-modules:
 
-      Loc
-    , Name
+--      Loc
+      Name
     , AST
     , Module
     , Program
@@ -29,6 +29,8 @@ executable algorithm-wm
     , Unify
     , TC
     , Eval
+
+    , REPL
 
   build-depends:
 
@@ -48,6 +50,8 @@ executable algorithm-wm
     , ansi-wl-pprint
     , ansi-terminal
     , hinotify
+    , readline
+    , optparse-applicative
 
   hs-source-dirs:    src
 

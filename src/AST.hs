@@ -1,5 +1,5 @@
 {-# LANGUAGE MultiParamTypeClasses, FunctionalDependencies, FlexibleInstances #-}
-{-# LANGUAGE OverloadedStrings, FlexibleContexts #-}
+{-# LANGUAGE OverloadedStrings, FlexibleContexts, RankNTypes #-}
 module AST ( Literal(..), Exp(..), Pat(..), Alt, Ty(..), Kind(..), Scheme(..)
            , Name, Subst, Term(..)
            , (.->)
@@ -226,4 +226,6 @@ renameScheme = go [] (names ++ err)
       go _ []       (Poly _ _) = err
 
       names = map return ['a'..'z']
+
+      err :: forall a. a
       err = error ("more than " ++ show (length names) ++ "quanifiers? Really?")

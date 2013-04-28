@@ -5,63 +5,65 @@ module Main where
 import Control.Applicative
 import Data.Monoid
 import Data.Maybe
-import Text.PrettyPrint.ANSI.Leijen hiding ((<>), (<$>), empty)
-
-import System.INotify
+import Data.Version (showVersion)
+import Options.Applicative
 import System.Environment
-import System.Console.ANSI
+import Paths_algorithm_wm (version)
 
-import AST
-import Module
-import TC
-import Program
+import REPL
 
+data Args = Repl Settings
+          | ShowVersion
 
-traceEnvUp :: Context t TyEnv
-traceEnvUp = takeWhile ((border /=) . fst) <$> tyEnv
+settingsP :: Parser Settings
+settingsP = Settings
+  <$> strOption
+      (  long    "prompt"
+      <> metavar "STR"
+      <> value   "*>" <> showDefault
+      <> help    "Freeform prompt string."
+      )
 
+  <*> strOption
+      (  long    "stdlib"
+      <> metavar "DIR"
+      <> value   "./lib" <> showDefault
+      <> help    "Path to standart library sources."
+      )
 
-prettySubst :: Pretty t => Subst t -> Doc
-prettySubst = vcat . map (\(n, t) -> text n <+> text "|->" <+> align (pretty t))
+  <*> switch
+      (  long    "show-ty-env"
+      <> help    "Show type environment after load."
+      )
 
+  <*> switch
+      (  long    "debug"
+      <> help    "Show each parsed entity."
+      )
 
-ppTyEnv :: TyEnv -> Doc
-ppTyEnv = pretty . reverse . map (uncurry SigD) . mapMaybe tyBind
-    where
-      tyBind (n, HasType ty) = Just (n, ty)
-      tyBind _               = Nothing
+argsP :: Parser Args
+argsP = Repl <$> settingsP
+    <|> flag' ShowVersion versionP
+  where
+   versionP =
+        long  "version"
+     <> short 'V'
+     <> short '?'
+     <> help  "Show version and exit."
 
---------------------------------------------------------------------------------
-run :: FilePath -> IO ()
-run path = do
-  mm <- parseProgram path
-  case mm of
-    Left s -> print $ hang 4 ((red "Unable to parse:") </> text (show s))
-    Right m -> do
-      print $ "Parsed module:" <> line <>
-                indent 4 (pretty m)
-      case checkProgram m of
-        Left err -> print (pretty err)
-        Right tyEn -> do
-            print $ "Type environment:" <> line <>
-                        indent 4 (ppTyEnv tyEn)
-            case execProgram m of
-              Nothing -> putStrLn "There is no main. Nothing to eval."
-              Just va -> print $ "Output:" </> indent 4 (pretty va)
+opts :: ParserInfo Args
+opts = info (helper <*> argsP)
+  (  fullDesc
+  <> progDesc ""
+  <> header   ""
+  )
 
+run :: Args -> IO ()
+run ShowVersion = putStrLn (showVersion version)
+run (Repl s)    = do
+  putStrLn "Hi!"
+  runRepl s
+  putStrLn "Bye, bye...     ._."
 
 main :: IO ()
-main = do
-  [path] <- getArgs
-  run path
-  ino <- initINotify
-  wd <- addWatch ino [Modify] path $ \e ->
-        case e of
-          Modified { isDirectory = False, maybeFilePath = Nothing  }
-              | otherwise -> clearFromCursorToScreenBeginning >> run path
-          _ -> putStrLn $ "warning: skipping event " ++ show e
-
-  _ <- getLine
-  removeWatch wd
-  killINotify ino
-  putStrLn "Bye, bye! ._."
+main = execParser opts >>= run
