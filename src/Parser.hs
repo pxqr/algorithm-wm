@@ -177,10 +177,12 @@ instance Expr Ty where
       [apps]
 
    where
-    apps = fmap (L.foldl1 AppT) $ some $ indented >> exprPrec "type" []
-           [ LitT <$> tyLitP
-           , VarT <$> tyVarP
-           ]
+    apps = fmap (L.foldl1 AppT) $ some $ do
+             sameOrIndented
+             exprPrec "type" []
+               [ LitT <$> tyLitP
+               , VarT <$> tyVarP
+               ]
 
 instance Expr Kind where
   expr = exprPrec "kind"

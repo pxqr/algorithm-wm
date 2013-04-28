@@ -13,7 +13,8 @@ import Data.Maybe
 import Data.Char
 import Text.Parsec as P
 import Text.Parsec.String
-import Text.PrettyPrint.ANSI.Leijen ((</>), indent, pretty, line, Doc)
+import Text.PrettyPrint.ANSI.Leijen ((</>), (<+>),
+                                     indent, pretty, line, Doc)
 import qualified Text.PrettyPrint.ANSI.Leijen as PP
 
 import System.INotify
@@ -29,6 +30,7 @@ import TC
 
 data Cmd = Quit
          | Load FilePath
+         | Browse
          | Eval   Exp
          | TypeOf Exp
          | KindOf Ty
@@ -146,11 +148,16 @@ typeOf e = do
   p   <- gets stProgram
   env <- typecheck p
   liftIO $ case inferTy e env of
-    Left e -> print (pretty e)
-    Right t -> print (pretty t)
+    Left er -> print (pretty er)
+    Right t -> print (pretty e <+> PP.colon <+> pretty t)
 
 kindOf :: Ty -> REPL ()
-kindOf t = liftIO $ print t
+kindOf t = do
+  p   <- gets stProgram
+  env <- typecheck p
+  liftIO $ case inferKd t env of
+    Left e -> print (pretty e)
+    Right k -> print (pretty t <+> PP.colon <+> pretty k)
 
 infoOf :: Name -> REPL ()
 infoOf n = do

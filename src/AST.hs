@@ -215,7 +215,7 @@ instance Pretty Kind where
           arrow   = green (text "->")
 
 
-generalize :: Term a Ty => a -> Set Name -> Scheme a
+generalize :: Term a a => a -> Set Name -> Scheme a
 generalize t m = S.fold Poly (Mono t) (freeVars t `S.difference` m)
 
 renameScheme :: Term a Ty => Scheme a -> Scheme a

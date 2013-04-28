@@ -81,7 +81,8 @@ checkModule m = do
       , fn == sn                     = ([sig, fun] :) <$> groupDec xs'
       |      otherwise               = stringError msg
       where
-        msg = "The type signature for " ++ show sn ++ " lacks an accompanying binding"
+        msg = "The type signature for " ++ show sn
+              ++ " lacks an accompanying binding"
 
     groupDec (x@(FunD _ _ _) : xs)     = ([x] :) <$> groupDec xs
     groupDec [] = return []

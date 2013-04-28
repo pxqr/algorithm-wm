@@ -24,7 +24,14 @@ runTI :: TyEnv -> Context t a -> Result a
 runTI env c = runUnifier (runContext c env)
 
 inferTy :: Exp -> TyEnv -> Result (Scheme Ty)
-inferTy e env = runTI env (withDef (tyInfW e >>= generalizeM))
+inferTy e env = runTI env $ withDef $
+                  tyInfW e >>= generalizeM
+
+
+inferKd :: Ty -> TyEnv -> Result (Scheme Kind)
+inferKd t env =
+  runTI env $ generalizeM t >>= \sc -> do
+    bindKinds sc (kdInf >=> generalizeM)
 
 data Info = HasType (Scheme Ty)
           | HasKind Kind
@@ -37,7 +44,7 @@ type Result = Either TyError
 type Index = Int
 type Context t = ReaderT TyEnv (StateT Index (UnifierM t Result))
 
-generalizeM :: Term a Ty => a -> Context t (Scheme a)
+generalizeM :: Term a a => a -> Context t (Scheme a)
 generalizeM ty = generalize ty . S.fromList . map fst <$> tyEnv
 
 substTyEnv :: TyEnv -> Subst Ty  -> TyEnv

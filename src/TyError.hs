@@ -44,6 +44,8 @@ ppExpTrace = vcat . map (\e -> red "in expression: " <+> pretty e)
 
 instance Pretty TyError where
     pretty (UnificationE e) = pretty e
+    pretty (KdUnificationE e) = red "Kind check failure:" <//>
+                                  pretty e
 
     pretty (UnboundE     n cxt)     =
         red "not bound:" <+> pretty n </> ppExpTrace cxt
@@ -58,8 +60,11 @@ instance Pretty TyError where
                         "with actual kind:" <+> pretty k2 </>
                                  "in type:" <+> pretty t
 
+    pretty (RedefineE n) = blue (text n) <+> "already defined"
+    pretty (ConArityMismatchE e) =
+      ppExpTrace e
     pretty (StrMsg s)           = red (text s)
-    pretty msg = red (text (show msg))
+
 
 stringError :: MonadError TyError m => String -> m a
 stringError = throwError . StrMsg
