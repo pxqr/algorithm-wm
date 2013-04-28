@@ -30,6 +30,7 @@ import TC
 
 data Cmd = Quit
          | Load FilePath
+         | Reload
          | Browse
          | Eval   Exp
          | TypeOf Exp
@@ -44,6 +45,7 @@ cmdP = many space >> choice (map P.try
   , string ":t " >> TypeOf <$> inRepl expP
   , string ":k " >> KindOf <$> inRepl tyP
   , string ":i " >> InfoOf <$> inRepl nameP
+  , string ":r"  >> return Reload
   , string ""    >> Eval   <$> inRepl expP
   ])
 
@@ -61,6 +63,7 @@ data RState = RState {
   , stWD       :: Maybe WatchDescriptor
 
   , stProgram  :: Program
+  , stCurrent  :: Maybe FilePath
   }
 
 type REPL = StateT RState IO
@@ -135,10 +138,17 @@ load path = do
   printParsed p
   te <- typecheck p
   printTyEnv te
-  modify (\st-> st { stProgram = p })
+  modify (\st-> st { stProgram = p, stCurrent = Just path })
   liftIO $ case execProgram p of
     Nothing -> putStrLn "There is no main. Nothing to eval."
     Just va -> print $ "Output:" </> indent 4 (pretty va)
+
+reload :: REPL ()
+reload = do
+  mpath <- gets stCurrent
+  case mpath of
+    Nothing -> liftIO $ putStrLn "No one module loaded."
+    Just path -> load path
 
 eval :: Exp -> REPL ()
 eval e = liftIO $ print e
@@ -171,6 +181,7 @@ infoOf n = do
 execCmd :: Cmd -> REPL ()
 execCmd  Quit       = quit
 execCmd (Load path) = load (takeWhile (not . isSpace) path) >> loop
+execCmd (Reload   ) = reload >> loop
 execCmd (Eval   e ) = eval e   >> loop
 execCmd (TypeOf e ) = typeOf e >> loop
 execCmd (KindOf t ) = kindOf t >> loop
@@ -203,6 +214,6 @@ loop = do
 runRepl :: Settings -> IO ()
 runRepl s =
   withINotify $ \ino -> do
-    let initState = RState s ino Nothing emptyProgram
+    let initState = RState s ino Nothing emptyProgram Nothing
     execStateT loop initState
     return ()
