@@ -4,6 +4,7 @@ module Program
        , parseProgram, checkProgram, execProgram
        ) where
 
+import Control.Applicative
 import Text.PrettyPrint.ANSI.Leijen hiding ((<>), (<$>), empty)
 
 import Eval
@@ -29,7 +30,7 @@ parseProgram path = do
     Right m -> return (Right (Program [m]))
 
 checkProgram :: Program -> Result TyEnv
-checkProgram = checkModule . head . getProgram
+checkProgram p = concat <$> mapM checkModule (getProgram p)
 
 execProgram :: Program -> Maybe Value
 execProgram = evalMain . head . getProgram

@@ -38,7 +38,7 @@ data Cmd = Quit
 cmdP :: Parser Cmd
 cmdP = many space >> choice (map P.try
   [ string ":q"  >> return Quit
-  , string ":l " >> (Load <$> some anyChar)
+  , string ":l " >> (Load  <$> some anyChar)
   , string ":t " >> TypeOf <$> inRepl expP
   , string ":k " >> KindOf <$> inRepl tyP
   , string ":i " >> InfoOf <$> inRepl nameP
@@ -78,14 +78,38 @@ prettySubst :: Pretty t => Subst t -> Doc
 prettySubst = vcat . map (\(n, t) -> text n <+> text "|->" <+> align (pretty t))
 -}
 
+parseAll :: FilePath -> REPL Program
+parseAll path = do
+    mm <- liftIO $ parseProgram path
+    case mm of
+      Right p -> return p
+      Left s -> liftIO $ ioError $ userError (show (ppErr s))
+  where
+    ppErr s = PP.hang 4 ((PP.red "Unable to parse:") </> PP.text (show s))
+
+printParsed :: Program -> REPL ()
+printParsed p = do
+  se <- gets stSettings
+  when (seShowParsed se) $ liftIO $
+    print $ "Parsed module:" <> line <> indent 4 (pretty p)
+
+typecheck :: Program -> REPL TyEnv
+typecheck p = liftIO $ do
+  case checkProgram p of
+    Right tyEn -> return tyEn
+    Left  err  -> ioError $ userError (show (pretty err))
+
+printTyEnv :: TyEnv -> REPL ()
+printTyEnv tyEn = do
+  se <- gets stSettings
+  when (seShowTyEnv se) $ liftIO $
+    print $ "Type environment:" <> line <> indent 4 (ppTyEnv tyEn)
 
 untrackCurrent :: REPL ()
 untrackCurrent = gets stWD >>= liftIO . untrackWD
   where
     untrackWD Nothing   = return ()
     untrackWD (Just wd) = removeWatch wd
-
-
 
 trackFile :: FilePath -> REPL ()
 trackFile path = do
@@ -105,28 +129,25 @@ quit = untrackCurrent
 
 load :: FilePath -> REPL ()
 load path = do
-  mm <- liftIO $ parseProgram path
-  case mm of
-    Left s -> liftIO $ print $
-       PP.hang 4 ((PP.red "Unable to parse:") </> PP.text (show s))
-    Right p -> do
-      liftIO $ print $ "Parsed module:" <> line <>
-                indent 4 (pretty p)
-      case checkProgram p of
-        Left err -> liftIO $ print (pretty err)
-        Right tyEn -> do
-            liftIO $ print $ "Type environment:" <> line <>
-                        indent 4 (ppTyEnv tyEn)
-            modify (\st-> st { stProgram = p })
-            liftIO $ case execProgram p of
-              Nothing -> putStrLn "There is no main. Nothing to eval."
-              Just va -> print $ "Output:" </> indent 4 (pretty va)
+  p  <- parseAll path
+  printParsed p
+  te <- typecheck p
+  printTyEnv te
+  modify (\st-> st { stProgram = p })
+  liftIO $ case execProgram p of
+    Nothing -> putStrLn "There is no main. Nothing to eval."
+    Just va -> print $ "Output:" </> indent 4 (pretty va)
 
 eval :: Exp -> REPL ()
 eval e = liftIO $ print e
 
 typeOf :: Exp -> REPL ()
-typeOf e = liftIO $ print e
+typeOf e = do
+  p   <- gets stProgram
+  env <- typecheck p
+  liftIO $ case inferTy e env of
+    Left e -> print (pretty e)
+    Right t -> print (pretty t)
 
 kindOf :: Ty -> REPL ()
 kindOf t = liftIO $ print t
@@ -134,7 +155,11 @@ kindOf t = liftIO $ print t
 infoOf :: Name -> REPL ()
 infoOf n = do
   p <- gets stProgram
-  liftIO $ mapM_ (print . pretty) (lookupNamePrg n p)
+  let info = lookupNamePrg n p
+  liftIO $ if null info
+    then putStrLn $ "There is no " ++ n
+    else mapM_ (print . pretty) info
+
 
 execCmd :: Cmd -> REPL ()
 execCmd  Quit       = quit

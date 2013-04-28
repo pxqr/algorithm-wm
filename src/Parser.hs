@@ -132,13 +132,18 @@ instance Expr Pat where
     ]
 
 altP :: Parser Alt
-altP = (,) <$> (expr <* sym "->") <*> expr
+altP = withPos $ do
+  p <- expr
+  sym "->"
+  b <- expr
+  return (p, b)
 
 varP :: Parser Name
 varP = tyVarP
 
 instance Expr Exp where
-  expr = fmap (L.foldl1 App) $ some $ indented >> exprPrec "expression" []
+  expr = fmap (L.foldl1 App) $ some $ sameOrIndented
+           >> exprPrec "expression" []
     [ Bot  <$  sym "_|_"
     , Lit  <$> expr
     , Var  <$> varP
@@ -167,7 +172,7 @@ modNameP :: Parser ModName
 modNameP = ModName <$> nameP
 
 instance Expr Ty where
-  expr = indented >> exprPrec "type"
+  expr = exprPrec "type"
       [ [Infix (op "->" >> return (.->)) AssocRight] ]
       [apps]
 
@@ -191,12 +196,15 @@ instance Expr a => Expr (Scheme a) where
     , Mono <$> expr
     ]
 
+funBody :: Parser Exp
+funBody = expr
+
 instance Expr Dec where
   expr = exprPrec "declaration" []
-    [ SigD  <$> (nameP <*  sym ":") <*> schemeP
-    , FunD  <$>  nameP <*> many nameP  <*> (sym "=" *> expr)
+    [ SigD  <$> (nameP <*  sym ":") <*> (indented >> schemeP)
+    , (FunD  <$>  nameP <*> (many nameP <* sym "=")) <+/> funBody
     , DataD <$> (sym "data" *> nameP)
-            <*> (sym ":"    *> expr)
+            <*> (sym ":"    *> (indented >> expr))
             <*> (try (sym "where" *> block consP) <|> pure [])
     ]
    where
@@ -242,9 +250,9 @@ parseFile path = do
 
 inRepl :: Parser a -> S.Parser a
 inRepl p = do
-  s <- many anyChar
+  s <- many anyChar <* eof
   let path = ":interactive:"
-  let res  = runIndent path (runParserT p M.empty path s)
+  let res  = runIndent path (runParserT (withPos p <* eof) M.empty path s)
   case res of
     Left e  -> fail (show e)
     Right r -> return r

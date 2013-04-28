@@ -69,19 +69,6 @@ initTyEnv :: TyEnv
 initTyEnv = [ ("->",        HasKind $ ArrK Star (ArrK Star Star))
             ]
 
-
---runUnifier :: Unifier Ty a -> Result a
-runUnifier u = evalStateT u []
-
---runContext :: Context a -> TyEnv -> Unifier Ty a
-runContext c env = evalStateT (runReaderT c env) 0
-
-runTI :: TyEnv -> Context t a -> Result a
-runTI env c = runUnifier (runContext c env)
-
-inferTy :: Exp -> TyEnv -> Result (Scheme Ty)
-inferTy e env = runTI env (withDef (tyInfW e >>= generalizeM))
-
 checkModule :: Module -> Result TyEnv
 checkModule m = do
     grm <- groupDec (modDecs m)
