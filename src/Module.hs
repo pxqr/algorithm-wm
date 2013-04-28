@@ -54,16 +54,17 @@ instance Pretty Module where
       modD = "module" <+> pretty (modName m) <+> "where"
       ppImport imp = "import" <+> pretty imp
 
-decName :: Dec -> Name
-decName (DataD n _ _) = n
-decName (SigD  n _)   = n
-decName (FunD  n _ _) = n
+decName :: Dec -> [Name]
+decName (DataD n _ cs) = n : map fst cs
+decName (SigD  n _)    = [n]
+decName (FunD  n _ _)  = [n]
 
 lookupNameM :: Name -> Module -> [Dec]
 lookupNameM n = mapMaybe getInfo . modDecs
   where
-    getInfo d | decName d == n = Just d
-              |    otherwise   = Nothing
+    getInfo d | (n ==) `any` decName d = Just d
+              | otherwise              = Nothing
+
 
 initTyEnv :: TyEnv
 initTyEnv = [ ("->",        HasKind $ ArrK Star (ArrK Star Star))
@@ -100,7 +101,7 @@ checkModule m = do
         isSaturatedTy s
 
     checkNames :: [[Dec]] -> Result ()
-    checkNames = foldM_ checkName S.empty . map (decName . head)
+    checkNames = foldM_ checkName S.empty . concatMap (decName . head)
         where
          checkName s n | n `S.member` s = throwError (RedefineE n)
                        |    otherwise   = return (S.insert n s)

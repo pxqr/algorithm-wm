@@ -1,4 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE DeriveDataTypeable #-}
 module REPL
        ( REPL, Settings(..)
        , runRepl
@@ -12,6 +13,7 @@ import Control.Exception as E
 import Data.Monoid
 import Data.Maybe
 import Data.Char
+import Data.Typeable (Typeable)
 import Text.Parsec as P
 import Text.Parsec.String
 import Text.PrettyPrint.ANSI.Leijen ((</>), (<+>),
@@ -27,6 +29,8 @@ import Module
 import Program
 import Parser
 import TC
+import TyError
+
 
 cmdDesc :: String
 cmdDesc =
@@ -45,8 +49,6 @@ cmdDesc =
   \For exsample:\n\
   \  \":quit\" and \":q\" are the same\n\
   \  \":load some/path\" and \":l some/path\" are the same"
-
-
 
 
 data Cmd = Quit
@@ -104,6 +106,16 @@ data RState = RState {
 
 type REPL = StateT RState (Line.InputT IO)
 
+data REPLException = TypecheckFail TyError
+                   | ParserFail P.ParseError
+                   deriving (Show, Typeable)
+
+instance Exception REPLException
+
+instance PP.Pretty REPLException where
+  pretty (ParserFail e) = PP.vsep (map PP.text (lines (show e)))
+  pretty (TypecheckFail e) = pretty e
+
 ppTyEnv :: TyEnv -> Doc
 ppTyEnv = pretty . reverse . map (uncurry SigD) . mapMaybe tyBind
     where
@@ -124,9 +136,7 @@ parseAll path = do
     mm <- liftIO $ parseProgram path
     case mm of
       Right p -> return p
-      Left s -> liftIO $ ioError $ userError (show (ppErr s))
-  where
-    ppErr s = PP.hang 4 ((PP.red "Unable to parse:") </> PP.text (show s))
+      Left err -> throw (ParserFail err)
 
 printParsed :: Program -> REPL ()
 printParsed p = do
@@ -138,7 +148,7 @@ typecheck :: Program -> REPL TyEnv
 typecheck p = liftIO $ do
   case checkProgram p of
     Right tyEn -> return tyEn
-    Left  err  -> ioError $ userError (show (pretty err))
+    Left  err  -> throw (TypecheckFail err)
 
 printTyEnv :: TyEnv -> REPL ()
 printTyEnv tyEn = do
@@ -163,7 +173,7 @@ trackFile path = do
       clearFromCursorToScreenBeginning
 --      load path
     handler e = putStrLn $ "warning: skipping event " ++ show e
-
+    --
 
 quit :: REPL ()
 quit = untrackCurrent
@@ -230,12 +240,14 @@ infoOf n = do
 suppressE :: Cmd -> REPL () -> REPL ()
 suppressE cmd action = Line.catch action (handler cmd)
   where
-    handler :: Cmd -> IOException -> REPL ()
-    handler cmd e = liftIO $ putStrLn ("Error occurred:\n"
-                       ++ show e ++ "\n"
-                       ++ "While executing:\n"
-                       ++ show cmd
-                        )
+    handler :: Cmd -> REPLException -> REPL ()
+    handler cmd e = liftIO $ print $
+       PP.red (PP.text "Error occurred:") <> PP.line <>
+         PP.indent 2 (pretty e) <> PP.line <>
+       PP.red (PP.text "While executing:") <> PP.line <>
+         PP.indent 2 (PP.text (show cmd))
+
+
 
 execCmd :: Cmd -> REPL ()
 execCmd c@Quit       = quit

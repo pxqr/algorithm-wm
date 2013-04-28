@@ -7,6 +7,7 @@ module Program
 
 import Control.Applicative
 import Text.PrettyPrint.ANSI.Leijen hiding ((<>), (<$>), empty)
+import Text.Parsec
 
 import Eval
 import Module
@@ -27,11 +28,11 @@ isEmptyProgram :: Program -> Bool
 isEmptyProgram (Program []) = True
 isEmptyProgram _            = False
 
-parseProgram :: FilePath -> IO (Either String Program)
+parseProgram :: FilePath -> IO (Either ParseError Program)
 parseProgram path = do
   mm <- parseFile path
   case mm of
-    Left e -> return (Left (show e))
+    Left e -> return (Left e)
     Right m -> return (Right (Program [m]))
 
 checkProgram :: Program -> Result TyEnv

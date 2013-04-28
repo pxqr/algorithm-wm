@@ -62,7 +62,7 @@ instance Pretty TyError where
                                  "in type:" <+> pretty t
 
     pretty (RedefineE n) = blue ("\"" <> pretty n <> "\"")
-                             <+> "already defined"
+                             <+> "is already defined"
 
     pretty (ConArityMismatchE e) = ppExpTrace e
     pretty (StrMsg s)           = red (text s)
