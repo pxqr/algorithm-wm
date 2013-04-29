@@ -197,6 +197,10 @@ instance Pretty Ty where
 
       pp (LitT n) = magenta (text n)
       pp (VarT n) = text n
+      pp (AbsT n t) = parens (lambda <> text n <> dot <+> pretty t)
+        where
+          lambda = green (char 'λ')
+
       pp t = parens (pretty t)
       arrow = blue (text "->")
 

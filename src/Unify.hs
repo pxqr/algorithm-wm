@@ -68,10 +68,12 @@ unify _t1 _t2 = go [(_t1, _t2)] _t1 _t2
 
       go cxt (VarT n)      (VarT  m)
         | n == m    = return ()
-        | otherwise = do return ()
+--        | otherwise = do return ()
 --          assignVar cxt n (VarT m)
 --          assignVar cxt m (VarT n)
 
+      go cxt (AbsT n t)    t1          = error "unify"
+      go cxt     t1        (AbsT n t)  = error "unify"
 
       go cxt t            (VarT n)     = assignVar cxt n t
       go cxt (VarT n)     t            = assignVar cxt n t
@@ -81,6 +83,7 @@ unify _t1 _t2 = go [(_t1, _t2)] _t1 _t2
         t2' <- reify t2
         t4' <- reify t4
         go ((t2', t4') : cxt) t2' t4'
+
 
       go cxt t1           t2 = throwError (UFailureE t1 t2 cxt)
 
@@ -93,9 +96,10 @@ unify _t1 _t2 = go [(_t1, _t2)] _t1 _t2
 
 (||=) :: Ty -> Ty -> Unifier Ty Bool
 t1 ||= t2 = do
-  unify t1 t2
+  unify t2 t1
+  t2' <- reify t2
   t1' <- reify t1
-  return (t1 == t1')
+  return (t1' == t2')
 
 
 unifyKd :: Kind -> Kind -> Unifier Kind ()

@@ -92,6 +92,9 @@ bindLocal n t = local ((n, HasType t) :)
 bindLocalMany :: Subst (Scheme Ty) -> Context t a -> Context t a
 bindLocalMany bs = local (map (second HasType) bs ++)
 
+bindLocalKd :: Name -> Kind -> Context t a -> Context t a
+bindLocalKd n k = local ((n, HasKind k) :)
+
 bindKinds :: Scheme Ty -> (Ty -> Context t a) -> Context t a
 bindKinds sc a = go sc
   where
@@ -129,31 +132,72 @@ lookupTyLit n = do
 lookupTyVar :: Name -> Context t Kind
 lookupTyVar = lookupTyLit
 
+applyTy :: Ty -> Ty -> Context Ty Ty
+applyTy t1 t2 = do
+  f  <- freshVar
+  withU $ do
+    t1' <- reify t1
+    unify (t2 .-> f) t1'
+    reify f
+
+unifyMany :: [Ty] -> Context Ty Ty
+unifyMany [] = freshVar
+unifyMany (t : ts) = foldM (\a x -> withU (unify a x >> reify a)) t ts
+
 tyInfLit :: Literal -> Context Ty Ty
 tyInfLit (LitInt _)  = return (LitT "Int")
 tyInfLit (LitChar _) = return (LitT "Char")
+tyInfLit (LitStr _)  = return (LitT "List" `AppT` LitT "Char" )
 tyInfLit (LitCon n)  = lookupVar [] n >>= freshInst
 
-tyProjPat :: [Exp] -> Ty -> Pat -> Context Ty (Subst Ty)
-tyProjPat _  _  WildP      = return []
-tyProjPat _  t (VarP n)    = return [(n, t)]
-tyProjPat es t (ConP n names) = do
+tyInfPat :: Pat -> Context Ty Ty
+tyInfPat  WildP      = freshVar
+tyInfPat (LitP l)    = tyInfLit l
+tyInfPat (VarP _)    = freshVar
+tyInfPat (ConP n ns) = do
+  ct  <- tyInfLit (LitCon n)
+  fty <- mapM (const freshVar) ns
+  foldM applyTy ct fty
+
+tyInfPats :: [Pat] -> Context Ty Ty
+tyInfPats ps = mapM tyInfPat ps >>= unifyMany
+
+tyProjPat :: [Exp] -> Ty -> Pat -> Context Ty (Subst (Scheme Ty))
+tyProjPat _  _    WildP      = return []
+tyProjPat cxt _  (LitP l)    =
+  case l of
+    LitInt  _ -> return []
+    LitChar _ -> return []
+    LitStr  _ -> return []
+    LitCon  n -> do
+      ty <- lookupVar cxt n
+      return [(n, ty)]
+
+tyProjPat _  t (VarP n)    = return [(n, Mono t)]
+tyProjPat _  _ (ConP _ []) = error "ty proj pat"
+tyProjPat es t (ConP n [fin]) = do
   conTy <- lookupVar es n >>= freshInst
-  fiTys <- freshVar
+
+  fr    <- freshVar
+  patTy <- applyTy conTy fr
+
+  fr' <- withU $ do
+    unify patTy t
+    reify fr
+
+  return [(fin, Mono fr')]
+
+tyProjPat es t (ConP n [a, b]) = do
+  conTy <- lookupVar es n >>= freshInst
+
+  fra    <- freshVar
+  frb    <- freshVar
+  patTy  <- applyTy conTy fra >>= (`applyTy` frb)
+
   withU $ do
-    unify conTy (fiTys .-> t)
-    ts <- unfoldArr <$> reify fiTys
+    unify patTy t
 
---    when (length ts /= length names) $ do
---         throwError (ConArityMismatchE es)
-
-    return (zip names ts)
-  where
-    unfoldArr :: Ty -> [Ty]
-    unfoldArr = undefined
-
-tyProjPat _ _ (LitP _) = error "tyProjPat"
-
+  return [(a, Mono fra), (b, Mono frb)]
 
 
 tyInfW :: Exp -> Context Ty Ty
@@ -175,11 +219,7 @@ tyInfW = tyInf []
       go es (App e1 e2) = do
         t1 <- tyInf es e1
         t2 <- substLocal (tyInf es e2)
-        f  <- freshVar
-        withU $ do
-          t1' <- reify t1
-          unify (t2 .-> f) t1'
-          reify f
+        applyTy t1 t2
 
       go es (Let n e1 e2) = do
         t1 <- tyInf es e1
@@ -187,26 +227,26 @@ tyInfW = tyInf []
           s1 <- generalizeM t1
           bindLocal n s1 $ tyInf es e2
 
-      go es (Case e1 alts) = do freshVar
-{-        t1 <- tyInf es e1
-        ts <- forM alts $ uncurry (tyInfAlt t1)
+      go es (Case e1 alts) = do
+        t1  <- tyInf es e1
+        tas <- tyInfPats (map fst alts)
+        t1' <- withU $ unify t1 tas >> reify t1
+
+        ts <- forM alts $ uncurry (tyInfAlt t1')
         tyAltsAgree ts
--}
+
        where
          tyInfAlt :: Ty -> Pat -> Exp -> Context Ty Ty
          tyInfAlt t p e = do
-           binds <- undefined --tyInstPat es t p >>= mapM generalizeM
+           binds <- tyProjPat es t p
            bindLocalMany binds (tyInf es e)
 
          tyAltsAgree :: [Ty] -> Context Ty Ty
-         tyAltsAgree [] = stringError $ "no one alt " ++ show es
-         tyAltsAgree (t : ts) = withU $ do
-             undefined -- foldM unify t ts
-             reify t
+         tyAltsAgree = unifyMany
 
       go es (Ann e tann) = do
         t <- tyInf es e
-        mspec <- withU (tann ||= t)
+        mspec <- withU (t ||= tann)
         unless mspec $ do
           throwError (TyMismatchE tann t es)
         return tann
@@ -231,9 +271,11 @@ kdInf (AppT t1 t2) = do
     unifyKd k1 (k2 `ArrK` k)
     reify k
 
-kdInf (AbsT _ _  ) = do error "kdInf"
---  k1 <- freshKdVar
---  k2 <- bindLocal n (Mono k1) (kdInf t)
+kdInf (AbsT n t) = do
+  k  <- freshVar
+  k2 <- bindLocalKd n k (kdInf t)
+  k1 <- withUKd $ reify k
+  return (k1 `ArrK` k2)
 
 kdChk :: Ty -> Kind -> Context Kind ()
 kdChk t ke = do
