@@ -1,6 +1,7 @@
 module Program
        ( Program
        , emptyProgram, isEmptyProgram, moduleNames
+       , decNamesPrg
        , lookupNamePrg, addDec
        , parseProgram, checkProgram, execProgram, execName
        ) where
@@ -30,6 +31,9 @@ isEmptyProgram _            = False
 
 moduleNames :: Program -> [ModName]
 moduleNames p = map modName (getProgram p)
+
+decNamesPrg :: Program -> [Name]
+decNamesPrg = concatMap decNamesMod . getProgram
 
 parseProgram :: FilePath -> IO (Either ParseError Program)
 parseProgram path = do

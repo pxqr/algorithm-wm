@@ -15,6 +15,7 @@ import Control.Concurrent
 import Data.Monoid
 import Data.Maybe
 import Data.Char
+import Data.List as L
 import Data.Typeable (Typeable)
 import Text.Parsec as P
 import Text.Parsec.String
@@ -113,7 +114,8 @@ data RState = RState {
   , stCurrent  :: Maybe FilePath
   }
 
-type REPL = StateT RState (Line.InputT IO)
+type RMonad = StateT RState IO
+type REPL = Line.InputT RMonad
 
 data REPLException = TypecheckFail TyError
                    | ParserFail P.ParseError
@@ -126,10 +128,10 @@ instance PP.Pretty REPLException where
   pretty (TypecheckFail e) = pretty e
 
 ppTyEnv :: TyEnv -> Doc
-ppTyEnv = pretty . reverse . map (uncurry SigD) . mapMaybe tyBind
+ppTyEnv = PP.vsep . map pretty . reverse . mapMaybe mkBind
     where
-      tyBind (n, HasType ty) = Just (n, ty)
-      tyBind _               = Nothing
+      mkBind (n, HasType ty) = Just (SigD n ty)
+      mkBind (n, HasKind kd) = Just (DataD n kd [])
 
 {-
 traceEnvUp :: Context t TyEnv
@@ -149,7 +151,7 @@ parseAll path = do
 
 printParsed :: Program -> REPL ()
 printParsed p = do
-  se <- gets stSettings
+  se <- lift $ gets stSettings
   when (seShowParsed se) $ liftIO $
     print $ "Parsed module:" <> line <> indent 4 (pretty p)
 
@@ -161,22 +163,22 @@ typecheck p = liftIO $ do
 
 printTyEnv :: TyEnv -> REPL ()
 printTyEnv tyEn = do
-  se <- gets stSettings
+  se <- lift $ gets stSettings
   when (seShowTyEnv se) $ liftIO $
     print $ "Type environment:" <> line <> indent 4 (ppTyEnv tyEn)
 
 untrackCurrent :: REPL ()
 untrackCurrent = do
-    gets stWD >>= liftIO . untrackWD
-    modify (\st -> st { stWD = Nothing })
+    lift (gets stWD) >>= liftIO . untrackWD
+    lift $ modify (\st -> st { stWD = Nothing })
   where
     untrackWD Nothing   = return ()
     untrackWD (Just wd) = removeWatch wd
 
 trackFile :: FilePath -> REPL ()
 trackFile path = do
-    ino <- gets stINotify
-    st  <- get
+    ino <- lift (gets stINotify)
+    st  <- lift get
     _   <- liftIO $ addWatch ino [Modify] path (handler st)
     return ()
   where
@@ -199,7 +201,7 @@ putHumanLike str = do
   hi <- liftIO $ humanInput str
   forM_ hi $ \(c, d) -> do
     liftIO $ threadDelay d
-    lift $ Line.outputStr [c]
+    Line.outputStr [c]
 
 quit :: REPL ()
 quit = untrackCurrent
@@ -217,7 +219,7 @@ load path = do
   printParsed p
   te <- typecheck p
   printTyEnv te
-  modify (\st-> st { stProgram = p, stCurrent = Just path })
+  lift $ modify (\st-> st { stProgram = p, stCurrent = Just path })
 
   liftIO $ print (PP.green "Ok, loaded modules:" <+>
                   PP.hsep (PP.punctuate PP.comma (map pretty (moduleNames p))))
@@ -227,14 +229,14 @@ load path = do
 
 reload :: REPL ()
 reload = do
-  mpath <- gets stCurrent
+  mpath <- lift $ gets stCurrent
   case mpath of
     Nothing -> liftIO $ putStrLn "No one module loaded."
     Just path -> load path
 
 browse :: REPL ()
 browse = do
-  p <- gets stProgram
+  p <- lift  $ gets stProgram
   if isEmptyProgram p then
       liftIO $ putStrLn "There is nothing to show. Load module with :load."
     else do
@@ -245,7 +247,7 @@ browse = do
 eval :: Exp -> REPL ()
 eval e = do
   let interactiveName = "it"
-  prg <- gets (flip addDec (FunD interactiveName [] e) . stProgram)
+  prg <- lift $ gets (flip addDec (FunD interactiveName [] e) . stProgram)
   env <- typecheck prg
   let sc  = either fatalError id (inferTy e env)
   let val = fromMaybe fatalError (execName interactiveName prg)
@@ -260,7 +262,7 @@ eval e = do
 
 typeOf :: Exp -> REPL ()
 typeOf e = do
-  p   <- gets stProgram
+  p   <- lift $ gets stProgram
   env <- typecheck p
   liftIO $ case inferTy e env of
     Left er -> print (pretty er)
@@ -269,7 +271,7 @@ typeOf e = do
 
 kindOf :: Ty -> REPL ()
 kindOf t = do
-  p   <- gets stProgram
+  p   <- lift $ gets stProgram
   env <- typecheck p
   liftIO $ case inferKd t env of
     Left e -> print (pretty e)
@@ -277,7 +279,7 @@ kindOf t = do
 
 infoOf :: Name -> REPL ()
 infoOf n = do
-  p <- gets stProgram
+  p <- lift $ gets stProgram
   let info = lookupNamePrg n p
   liftIO $ if null info
     then putStrLn $ "There is no " ++ n
@@ -311,7 +313,8 @@ execCmd c@(InfoOf n ) = suppressE c (infoOf n) >> loop
 
 prompt :: REPL String
 prompt = do
-  mstr <- lift $ Line.getInputLine "*> "
+  pstr <- lift (gets (sePrompt . stSettings))
+  mstr <- Line.getInputLine $ show $ PP.blue $ PP.text pstr
   case mstr of
     Just str | not (all isSpace str) -> return str
     _ -> prompt
@@ -323,12 +326,45 @@ loop = do
     Left  e   -> liftIO (print e) >> loop
     Right cmd -> execCmd cmd
 
+completer :: Line.CompletionFunc RMonad
+completer (rpref, suff) = do
+    case dropWhile isSpace (reverse rpref) of
+      ":" -> return (rpref, cmdCompletions)
+      s | ":l " `isPrefixOf` s -> Line.completeFilename (rpref, suff)
+      s | ":t " `isPrefixOf` s -> undefined
+      s | ":i " `isPrefixOf` s -> do
+         ns <- gets (sort . nub . decNamesPrg . stProgram)
+         Line.completeWord Nothing " " (genericCompl ns) (rpref, suff)
+      _ -> Line.noCompletion (rpref, suff)
+  where
+   cmdCompletions = map mkCompl cmds
+     where
+       cmds      = [ "quit", "help", "set", "load"
+                   , "reload", "browse", "type", "kind", "info"
+                   ]
+       mkCompl c = Line.Completion [head c] c True
+
+   genericCompl ns str = do
+       let compls = filter (str `isPrefixOf`) ns
+       return (map mkCompl compls)
+     where
+       mkCompl str = Line.Completion str (ppAlter str) False
+         where
+           ppAlter al@(x : _)
+             | isUpper x = show (PP.blue (PP.text al))
+             | otherwise = al
+           ppAlter _ = []
+
+
 inIO :: RState -> REPL () -> IO ()
-inIO s r = Line.runInputT Line.defaultSettings $ evalStateT r s
+inIO s r = evalStateT (Line.runInputT lineSettings r) s
+  where
+    lineSettings = Line.setComplete completer Line.defaultSettings
 
 runRepl :: Settings -> IO ()
 runRepl s = do
-  putStrLn "Hi! Type :h or :help for help."
+  print $ "Hi! Type" <+> PP.blue ":h"    <+> "or"
+                     <+> PP.blue ":help" <+>"for help."
 
   withINotify $ \ino -> do
     let initState = RState s ino Nothing emptyProgram Nothing

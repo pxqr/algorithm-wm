@@ -18,7 +18,7 @@ settingsP = Settings
   <$> strOption
       (  long    "prompt"
       <> metavar "STR"
-      <> value   "*>" <> showDefault
+      <> value   "*> " <> showDefault
       <> help    "Freeform prompt string."
       )
 

@@ -1,7 +1,7 @@
 {-# LANGUAGE OverloadedStrings#-}
 module Module ( Module(..), Dec(..)
               , interactiveModule, addDecToMod
-              , decName, lookupNameM
+              , decName, decNamesMod, lookupNameM
               , checkModule
               ) where
 
@@ -57,6 +57,15 @@ decName :: Dec -> [Name]
 decName (DataD n _ cs) = n : map fst cs
 decName (SigD  n _)    = [n]
 decName (FunD  n _ _)  = [n]
+
+decNamesMod :: Module -> [Name]
+decNamesMod = concatMap decName . modDecs
+
+dataBindsMod :: Module -> [(Name, Kind)]
+dataBindsMod = concatMap toDataBind  . modDecs
+  where
+    toDataBind (DataD n kd _) = [(n, kd)]
+    toDataBind _              = []
 
 lookupNameM :: Name -> Module -> [Dec]
 lookupNameM n = mapMaybe getInfo . modDecs
