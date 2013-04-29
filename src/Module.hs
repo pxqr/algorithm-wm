@@ -132,7 +132,7 @@ checkModule m = do
       return ((n, HasType (renameScheme ty)) : env)
 
     checkDec env [(FunD n ps e)] = do
-      ty <- inferTy (desugar e ps) env
+      ty <- inferTy n (desugar e ps) env
       return ((n, HasType (renameScheme ty)) : env)
 
     checkDec _ _ = error "checkDec: impossible happen"

@@ -252,7 +252,7 @@ eval e = do
   prg <- gets (flip addDec (FunD interactiveName [] e) . stProgram)
   env <- typecheck prg
   let val = fromMaybe fatalError (execName interactiveName prg)
-  let ty  = either fatalError id (inferTy e env)
+  let ty  = either fatalError id (inferTy "_interactive_" e env)
   liftIO $ print $ pretty val <+> PP.colon <+> pretty ty
  where
    fatalError :: forall a . a
@@ -262,7 +262,7 @@ typeOf :: Exp -> REPL ()
 typeOf e = do
   p   <- gets stProgram
   env <- typecheck p
-  liftIO $ case inferTy e env of
+  liftIO $ case inferTy "_interactive_" e env of
     Left er -> print (pretty er)
     Right t -> print (pretty e <+> PP.colon <+> pretty t)
 

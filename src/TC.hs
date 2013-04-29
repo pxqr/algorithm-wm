@@ -23,10 +23,8 @@ runContext c env = evalStateT (runReaderT c env) 0
 runTI :: TyEnv -> Context t a -> Result a
 runTI env c = runUnifier (runContext c env)
 
-inferTy :: Exp -> TyEnv -> Result (Scheme Ty)
-inferTy e env = runTI env $ withDef $
-                  tyInfW e >>= generalizeM
-
+inferTy :: Name -> Exp -> TyEnv -> Result (Scheme Ty)
+inferTy n e env = runTI env $ withDef $ recDef n (tyInfW e) >>= generalizeM
 
 inferKd :: Ty -> TyEnv -> Result (Scheme Kind)
 inferKd t env =
@@ -89,6 +87,11 @@ freshInst = go []
 bindLocal :: Name -> Scheme Ty -> Context t a -> Context t a
 bindLocal n t = local ((n, HasType t) :)
 
+withDef :: Context t a -> Context t a
+withDef = bindLocal border err
+  where
+    err = error "don't use ty of border"
+
 bindLocalMany :: Subst (Scheme Ty) -> Context t a -> Context t a
 bindLocalMany bs = local (map (second HasType) bs ++)
 
@@ -139,6 +142,13 @@ applyTy t1 t2 = do
     t1' <- reify t1
     unify (t2 .-> f) t1'
     reify f
+
+recDef :: Name -> Context Ty Ty -> Context Ty Ty
+recDef n c = do
+  t <- freshVar
+  bindLocal n (Mono t) c -- TODO
+  withU $ reify t
+
 
 unifyMany :: [Ty] -> Context Ty Ty
 unifyMany [] = freshVar
@@ -222,10 +232,12 @@ tyInfW = tyInf []
         applyTy t1 t2
 
       go es (Let n e1 e2) = do
-        t1 <- tyInf es e1
-        substLocal $ do
-          s1 <- generalizeM t1
-          bindLocal n s1 $ tyInf es e2
+        rt <- freshVar
+        bindLocal n rt $ do
+          t1 <- tyInf es e1
+          substLocal $ do
+            s1 <- generalizeM t1
+            bindLocal n s1 $ tyInf es e2
 
       go es (Case e1 alts) = do
         t1  <- tyInf es e1
@@ -252,12 +264,6 @@ tyInfW = tyInf []
         return tann
 
 
-withDef :: Context t a -> Context t a
-withDef = bindLocal border err
-    where
-      err = error "don't use ty of border"
-
-
 type TyVarEnv = Subst Kind
 
 kdInf :: Ty -> Context Kind Kind
@@ -282,11 +288,12 @@ kdChk t ke = do
   ka <- kdInf t
   spec <- withUKd $ do
     unifyKd ke ka
+    ka' <- reify ka
     ke' <- reify ke
-    return (ka == ke')
+    return (ka' == ke')
 
   unless spec $ do
-    throwError (KindMismatchE ka ke t)
+    throwError (KindMismatchE ke ka t)
   return ()
 
 normalizeScheme :: Scheme Ty -> Context t (Scheme Ty)

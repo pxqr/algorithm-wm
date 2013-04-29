@@ -139,7 +139,11 @@ eval env s (CaseC e1   alts) = case eval env s e1 of
            else error ("EVAL: Con arity mismatch " ++ show (pretty evs) ++ " " ++ show pns)
       match _             _             = Nothing
 
-      errNonExhaustive = error ("Non-exhaustive patterns\n" ++ show (pretty (CaseC e1 alts)))
+      errNonExhaustive = error ("Non-exhaustive patterns\n"
+                                ++ show (pretty (CaseC e1 alts)) ++ "\n"
+                                ++ show (pretty (eval env s e1))
+                                ++ show (pretty s)
+                               )
 
 
 evalName :: Name -> Module -> Maybe Value

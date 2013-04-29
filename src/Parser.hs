@@ -152,7 +152,7 @@ instance Expr Exp where
     , Var  <$> varP
     , Let  <$> (sym "let" *> nameP)
            <*> (sym "="   *> expr)
-           <*> (sym "in"  *> expr <* reserved tok "end")
+           <*> (sym "in"  *> withPos expr <* sym "end")
     , Case <$> (sym "case" *> expr)
            <*> (sym "of"   *> block altP)
     , Abs  <$> (sym "\\"   *> varP)
