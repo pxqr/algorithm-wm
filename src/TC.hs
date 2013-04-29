@@ -23,8 +23,19 @@ runContext c env = evalStateT (runReaderT c env) 0
 runTI :: TyEnv -> Context t a -> Result a
 runTI env c = runUnifier (runContext c env)
 
-inferTy :: Name -> Exp -> TyEnv -> Result (Scheme Ty)
-inferTy n e env = runTI env $ withDef $ recDef n (tyInfW e) >>= generalizeM
+
+inferTy :: Exp -> TyEnv -> Result (Scheme Ty)
+inferTy e env = runTI env $ tyInfW e >>= generalizeM
+
+inferDecTy :: Name -> Exp -> TyEnv -> Result (Scheme Ty)
+inferDecTy n e env = runTI env $ withDef $
+  recDef n (tyInfW e) >>= generalizeM
+
+checkDecTy :: Name -> Exp -> Scheme Ty
+              -> TyEnv -> Result (Scheme Ty)
+checkDecTy n e sc env = runTI env $ withDef $ do
+  expectedTy <- freshInst sc
+  recDef n (tyInfW (Ann e expectedTy)) >>= generalizeM
 
 inferKd :: Ty -> TyEnv -> Result (Scheme Kind)
 inferKd t env =
@@ -146,8 +157,8 @@ applyTy t1 t2 = do
 recDef :: Name -> Context Ty Ty -> Context Ty Ty
 recDef n c = do
   t <- freshVar
-  _ <- bindLocal n (Mono t) c -- TODO
-  withU $ reify t
+  t' <- bindLocal n (Mono t) c -- TODO
+  withU $ reify t'
 
 
 unifyMany :: [Ty] -> Context Ty Ty

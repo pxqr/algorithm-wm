@@ -120,17 +120,11 @@ checkModule m = do
 
     checkDec env [SigD n sc, FunD _ ps e] = do
       checkSigKd env sc
-      ty <- runTI env $ do
-        tyAnn <- freshInst sc
-        scAnn <- generalizeM tyAnn
-
-        _ <- tyInfW (Ann (desugar e ps) tyAnn)
-        return scAnn
-
+      ty <- checkDecTy n (desugar e ps) sc env
       return ((n, HasType (renameScheme ty)) : env)
 
     checkDec env [(FunD n ps e)] = do
-      ty <- inferTy n (desugar e ps) env
+      ty <- inferDecTy n (desugar e ps) env
       return ((n, HasType (renameScheme ty)) : env)
 
     checkDec _ _ = error "checkDec: impossible happen"
