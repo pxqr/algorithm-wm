@@ -127,7 +127,7 @@ patConP = tyLitP
 instance Expr Pat where
   expr = sameOrIndented >> exprPrec "pattern" []
     [ WildP <$  sym "_"
-    , ConP  <$> patConP <*> some patVarP
+    , ConP  <$> patConP <*> many patVarP
     , LitP  <$> expr
     , VarP  <$> patVarP
     ]

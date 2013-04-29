@@ -59,12 +59,12 @@ valueToExp = go ['a'..'z']
           foldStr (ConV "Nil" []) = ""
           foldStr _ = error "valueToExp.foldStr: not typecheck expr"
 
-      go _ v@(ConV "Z" []) = Lit (LitInt 0)
-      go _ v@(ConV "S" [n]) = Lit (LitInt (succ (foldNat n)))
-        where
-          foldNat (ConV "Z" []) = 0
-          foldNat (ConV "S" [x]) = foldNat x
-          foldNat _              = error "value to expr"
+--      go _ v@(ConV "Z" []) = Lit (LitInt 0)
+--      go _ v@(ConV "S" [n]) = Lit (LitInt (succ (foldNat n)))
+--        where
+--          foldNat (ConV "Z" []) = 0
+--          foldNat (ConV "S" [x]) = foldNat x
+--          foldNat _              = error "value to expr"
 
       go ns (ConV n fs) = foldl App (Lit (LitCon n)) (map (go ns) fs)
       go (n : ns) (AbsV f) = Abs [n] (go ns (f (LitV (LitChar n))))
@@ -141,8 +141,9 @@ eval env s (CaseC e1   alts) = case eval env s e1 of
 
       errNonExhaustive = error ("Non-exhaustive patterns\n"
                                 ++ show (pretty (CaseC e1 alts)) ++ "\n"
-                                ++ show (pretty (eval env s e1))
-                                ++ show (pretty s)
+                                ++ show (alts) ++ "\n"
+                                ++ show (map valueToExp s) ++ "\n"
+                                ++ show (valueToExp (eval env s e1))
                                )
 
 

@@ -184,7 +184,7 @@ tyProjPat cxt _  (LitP l)    =
       return [(n, ty)]
 
 tyProjPat _  t (VarP n)    = return [(n, Mono t)]
-tyProjPat _  _ (ConP _ []) = error "ty proj pat"
+tyProjPat _  _ (ConP _ []) = return []
 tyProjPat es t (ConP n [fin]) = do
   conTy <- lookupVar es n >>= freshInst
 
