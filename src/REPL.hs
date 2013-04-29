@@ -247,9 +247,12 @@ eval e = do
   let interactiveName = "it"
   prg <- gets (flip addDec (FunD interactiveName [] e) . stProgram)
   env <- typecheck prg
+  let ty  = either fatalError id (runTI env (tyInfW e))
   let val = fromMaybe fatalError (execName interactiveName prg)
-  let ty  = either fatalError id (inferTy "_interactive_" e env)
-  liftIO $ print $ pretty val <+> PP.colon <+> pretty ty
+  liftIO $ print $ if isFunc ty
+    then pretty (PP.red "unsaturated function type:") <+> pretty ty
+    else pretty val <+> PP.colon <+> pretty ty
+
  where
    fatalError :: forall a . a
    fatalError = error "REPL.eval: impossible happen"
@@ -258,7 +261,7 @@ typeOf :: Exp -> REPL ()
 typeOf e = do
   p   <- gets stProgram
   env <- typecheck p
-  liftIO $ case inferTy "_interactive_" e env of
+  liftIO $ case runTI env (tyInfW e) of
     Left er -> print (pretty er)
     Right t -> print (pretty e <+> PP.colon <+> pretty t)
 

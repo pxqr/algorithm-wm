@@ -2,7 +2,7 @@
 {-# LANGUAGE OverloadedStrings, FlexibleContexts, RankNTypes #-}
 module AST ( Exp(..), Pat(..), Alt, Ty(..), Kind(..), Scheme(..)
            , Name, Subst, Term(..)
-           , (.->)
+           , (.->), isFunc
            , generalize, renameScheme
            ) where
 
@@ -54,6 +54,10 @@ arrowT = LitT "->"
 t1 .-> t2 = AppT (AppT arrowT t1) t2
 
 infixr 5 .->
+
+isFunc :: Ty -> Bool
+isFunc (AppT (AppT (LitT "->") _) _) = True
+isFunc _                             = False
 
 type Subst t = [(Name, t)]
 
