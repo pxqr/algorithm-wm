@@ -150,9 +150,19 @@ toList (ConE "Nil")                   = return []
 toList (App (App (ConE "Cons") x) xs) = (x :) `fmap` toList xs
 toList _                              = Nothing
 
+toPair :: Exp -> Maybe (Exp, Exp)
+toPair (App (App (ConE "MkPair") a) b) = return (a, b)
+toPair _                               = Nothing
+
+isUnitExp :: Exp -> Bool
+isUnitExp (ConE "MkUnit") = True
+isUnitExp _               = False
+
 instance Pretty Exp where
+  pretty ex | isUnitExp ex = blue "()"
   pretty ex | Just i <- toNat ex  = pretty (int i)
   pretty ex | Just l <- toList ex = pretty (map pretty l)
+  pretty ex | Just (a, b) <- toPair ex = parens (pretty a <> comma <+> pretty b)
   pretty ex = hsep (map pp (unfoldApp ex))
       where
         unfoldApp (App e1 e2) = unfoldApp e1 ++ [e2]
@@ -185,8 +195,18 @@ instance Pretty Exp where
         pp (Ann e t) = parens (pretty e <+> colon <+> pretty t)
 
 
+toListTy :: Ty -> Maybe Ty
+toListTy (AppT (LitT "List") a) = return a
+toListTy _                      = Nothing
+
+isUnitTy :: Ty -> Bool
+isUnitTy (LitT "Unit") = True
+isUnitTy _             = False
+
 instance Pretty Ty where
-  pretty = hsep . intersperse arrow . map (hsep . map pp . unfoldApp) . unfoldArr
+  pretty ty | isUnitTy ty = blue "()"
+  pretty ty | Just a <- toListTy ty = blue "[" <> pretty a <> blue "]"
+  pretty ty = hsep $ intersperse arrow $ map (hsep . map pp . unfoldApp) $ unfoldArr ty
     where
       unfoldArr (AppT (AppT (LitT "->") t1) t2) = t1 : unfoldArr t2
       unfoldArr t = [t]

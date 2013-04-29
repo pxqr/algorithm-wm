@@ -115,10 +115,32 @@ patVarP = tyVarP
 patConP :: Parser Name
 patConP = tyLitP
 
+patPairP :: Parser (Name, Name)
+patPairP = (,) <$> (op "(" *> patVarP)
+               <*> (op "," *> patVarP <* op ")")
+
+patPairC :: (Name, Name) -> Pat
+patPairC (a, b) = ConP "MkPair" [a, b]
+
+patNilP :: Parser Pat
+patNilP = ConP "Nil" [] <$ (op "[" >> op "]")
+
+patConsP :: Parser Pat
+patConsP = constr <$> (patVarP <* op ":")
+                  <*>  patVarP
+  where
+    constr = \a b -> ConP "Cons" [a, b]
+
+unitPatP :: Parser Pat
+unitPatP = ConP "MkUnit" [] <$ (op "(" >> op ")")
 
 instance Expr Pat where
   expr = same >> exprPrec "pattern" []
     [ WildP <$  sym "_"
+    , unitPatP
+    , patNilP
+    , patConsP
+    , patPairC <$> patPairP
     , ConP  <$> patConP <*> many patVarP
     , VarP  <$> patVarP
     ]
@@ -143,6 +165,16 @@ listP = op "[" *> sepBy expr (op ",") <* op "]"
 listC :: [Exp] -> Exp
 listC = L.foldr (App . App (ConE "Cons")) (ConE "Nil")
 
+pairP :: Parser (Exp, Exp)
+pairP = (,) <$> (op "(" *> expr <* op ",")
+            <*> (expr <* op ")")
+
+pairC :: (Exp, Exp) -> Exp
+pairC (a, b) = App (App (ConE "MkPair") a) b
+
+unitExpP :: Parser Exp
+unitExpP = ConE "MkUnit" <$ (op "(" >> op ")")
+
 instance Expr Exp where
   expr = fmap (L.foldl1 App) $ some $ sameOrIndented
            >> exprPrec "expression"
@@ -151,6 +183,8 @@ instance Expr Exp where
     [ Bot  <$  sym "_|_"
     , numC <$> integer tok
     , listC <$> listP
+    , pairC <$> pairP
+    , unitExpP
     , Var  <$> varP
     , ConE <$> conP
     , Let  <$> (sym "let" *> nameP)
@@ -177,6 +211,12 @@ tyVarP = do
 modNameP :: Parser ModName
 modNameP = ModName <$> nameP
 
+listTyP :: Parser Ty
+listTyP = AppT (LitT "List") <$> (op "[" *> expr <* op "]")
+
+unitTyP :: Parser Ty
+unitTyP = LitT "Unit" <$ (op "(" >> op ")")
+
 instance Expr Ty where
   expr = exprPrec "type"
       [ [Infix (op "->" >> return (.->)) AssocRight] ]
@@ -190,6 +230,8 @@ instance Expr Ty where
                , VarT <$> tyVarP
                , AbsT <$> (op "\\" *> tyVarP)
                       <*> (op "."  *> expr)
+               , unitTyP
+               , listTyP
                ]
 
 instance Expr Kind where
