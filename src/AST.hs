@@ -15,10 +15,8 @@ import Text.PrettyPrint.ANSI.Leijen hiding ((<>))
 
 import Name
 
-data Literal = LitInt  Int
-             | LitChar Char
-             | LitStr String -- used only for pretty printing
-             | LitCon  Name
+data Literal = LitCon Name
+             | LitSym String
                deriving (Show, Eq)
 
 data Exp = Bot
@@ -141,9 +139,9 @@ instance Term a a => Term (Scheme a) a where
   subst (Poly n t) s = Poly n (subst t (filter ((n ==) . fst) s))
 
 instance Pretty Literal where
-    pretty (LitInt i)  = cyan (int i)
-    pretty (LitChar c) = cyan (char '\'' <> char c <> char '\'')
-    pretty (LitStr s)  = yellow ("\"" <> text s <> "\"")
+--    pretty (LitInt i)  = cyan (int i)
+--    pretty (LitChar c) = cyan (char '\'' <> char c <> char '\'')
+--    pretty (LitStr s)  = yellow ("\"" <> text s <> "\"")
     pretty (LitCon  n) = blue (text n)
 
 instance Pretty Pat where

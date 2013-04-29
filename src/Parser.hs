@@ -111,9 +111,9 @@ conP = tyLitP
 
 instance Expr Literal where
   expr = exprPrec "literal" []
-       [ LitInt  <$> (fromIntegral <$> integer tok)
-       , LitChar <$> charLiteral tok
-       , LitCon  <$> conP
+       [ --LitInt  <$> (fromIntegral <$> integer tok)
+       --, --LitChar <$> charLiteral tok
+         LitCon  <$> conP
        ]
 
 

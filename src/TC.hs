@@ -155,9 +155,9 @@ unifyMany [] = freshVar
 unifyMany (t : ts) = foldM (\a x -> withU (unify a x >> reify a)) t ts
 
 tyInfLit :: Literal -> Context Ty Ty
-tyInfLit (LitInt _)  = return (LitT "Int")
-tyInfLit (LitChar _) = return (LitT "Char")
-tyInfLit (LitStr _)  = return (LitT "List" `AppT` LitT "Char" )
+--tyInfLit (LitInt _)  = return (LitT "Int")
+--tyInfLit (LitChar _) = return (LitT "Char")
+--tyInfLit (LitStr _)  = return (LitT "List" `AppT` LitT "Char" )
 tyInfLit (LitCon n)  = lookupVar [] n >>= freshInst
 
 tyInfPat :: Pat -> Context Ty Ty
@@ -176,9 +176,6 @@ tyProjPat :: [Exp] -> Ty -> Pat -> Context Ty (Subst (Scheme Ty))
 tyProjPat _  _    WildP      = return []
 tyProjPat cxt _  (LitP l)    =
   case l of
-    LitInt  _ -> return []
-    LitChar _ -> return []
-    LitStr  _ -> return []
     LitCon  n -> do
       ty <- lookupVar cxt n
       return [(n, ty)]

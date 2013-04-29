@@ -47,17 +47,20 @@ instance Pretty ExpC where
                                     where
                                       ppAlt (p, e) = pretty p <+> "=>" <+> pretty e
 
-valueToExp :: Value -> Exp
-valueToExp = go ['a'..'z']
+instance Pretty Value where
+  pretty = pretty . valueToExp
     where
-      go _ (BotV)   = Bot
-      go _ (LitV l) = Lit l
-      go _ v@(ConV "Cons" (LitV (LitChar _) : _)) = Lit $ LitStr (foldStr v)
+      valueToExp :: Value -> Exp
+      valueToExp = go ['a'..'z']
         where
-          foldStr :: Value -> String
-          foldStr (ConV "Cons" (LitV (LitChar x) : [xs])) = x : foldStr xs
-          foldStr (ConV "Nil" []) = ""
-          foldStr _ = error "valueToExp.foldStr: not typecheck expr"
+          go _ (BotV)   = Bot
+          go _ (LitV l) = Lit l
+--      go _ v@(ConV "Cons" (LitV (LitChar _) : _)) = Lit $ LitStr (foldStr v)
+--        where
+--          foldStr :: Value -> String
+--          foldStr (ConV "Cons" (LitV (LitChar x) : [xs])) = x : foldStr xs
+--          foldStr (ConV "Nil" []) = ""
+--          foldStr _ = error "valueToExp.foldStr: not typecheck expr"
 
 --      go _ v@(ConV "Z" []) = Lit (LitInt 0)
 --      go _ v@(ConV "S" [n]) = Lit (LitInt (succ (foldNat n)))
@@ -66,12 +69,10 @@ valueToExp = go ['a'..'z']
 --          foldNat (ConV "S" [x]) = foldNat x
 --          foldNat _              = error "value to expr"
 
-      go ns (ConV n fs) = foldl App (Lit (LitCon n)) (map (go ns) fs)
-      go (n : ns) (AbsV f) = Abs [n] (go ns (f (LitV (LitChar n))))
-      go []   _     = error "value to expr"
+          go ns (ConV n fs) = foldl App (Lit (LitCon n)) (map (go ns) fs)
+          go (n : ns) (AbsV f) = Abs [n] (go ns (f (LitV (LitSym [n]))))
+          go []   _     = error "value to expr"
 
-instance Pretty Value where
-  pretty = pretty . valueToExp
 
 
 type Stack = [Value]
@@ -126,7 +127,8 @@ eval env s (CaseC e1   alts) = case eval env s e1 of
                                  v    -> select v alts
     where
       select :: Value -> [AltC] -> Value
-      select v ((p, e) : xs) | Just bs <- match v p = foldr (flip apply) (eval env s e) bs
+      select v ((p, e) : xs) | Just bs <- match v p = foldr (flip apply) (eval env s e) $
+                                                      reverse bs
                              | otherwise = select v xs
       select _ [] = errNonExhaustive
 
@@ -142,8 +144,8 @@ eval env s (CaseC e1   alts) = case eval env s e1 of
       errNonExhaustive = error ("Non-exhaustive patterns\n"
                                 ++ show (pretty (CaseC e1 alts)) ++ "\n"
                                 ++ show (alts) ++ "\n"
-                                ++ show (map valueToExp s) ++ "\n"
-                                ++ show (valueToExp (eval env s e1))
+                                ++ show (map pretty s) ++ "\n"
+                                ++ show (pretty (eval env s e1))
                                )
 
 

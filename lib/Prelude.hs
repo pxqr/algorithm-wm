@@ -76,6 +76,11 @@ data List : * -> * where
   Nil  : List a
   Cons : a -> List a -> List a
 
+concat as bs = case as of
+  Nil -> bs
+  Cons x xs -> Cons x (concat xs bs)
+{-  Z -> _|_ -}
+
 data StateT : * -> (* -> *) -> * -> * where
   MkStateT : (s -> m (Pair s a)) -> StateT s m a
 
