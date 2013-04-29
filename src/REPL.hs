@@ -327,15 +327,19 @@ loop = do
     Right cmd -> execCmd cmd
 
 completer :: Line.CompletionFunc RMonad
-completer (rpref, suff) = do
+completer inp@(rpref, _) = do
     case dropWhile isSpace (reverse rpref) of
       ":" -> return (rpref, cmdCompletions)
-      s | ":l " `isPrefixOf` s -> Line.completeFilename (rpref, suff)
-      s | ":t " `isPrefixOf` s -> undefined
+      s | ":l " `isPrefixOf` s -> Line.completeFilename inp
+      s | ":k " `isPrefixOf` s -> do
+         ns <- gets (sort . nub . map fst . dataBindsPrg . stProgram)
+         Line.completeWord Nothing " " (genericCompl ns) inp
+
       s | ":i " `isPrefixOf` s -> do
          ns <- gets (sort . nub . decNamesPrg . stProgram)
-         Line.completeWord Nothing " " (genericCompl ns) (rpref, suff)
-      _ -> Line.noCompletion (rpref, suff)
+         Line.completeWord Nothing " " (genericCompl ns) inp
+
+      _ -> Line.noCompletion inp
   where
    cmdCompletions = map mkCompl cmds
      where
@@ -344,9 +348,8 @@ completer (rpref, suff) = do
                    ]
        mkCompl c = Line.Completion [head c] c True
 
-   genericCompl ns str = do
-       let compls = filter (str `isPrefixOf`) ns
-       return (map mkCompl compls)
+   genericCompl ns str =
+       return $ map mkCompl $ filter (str `isPrefixOf`) ns
      where
        mkCompl str = Line.Completion str (ppAlter str) False
          where

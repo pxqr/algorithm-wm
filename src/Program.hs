@@ -1,7 +1,7 @@
 module Program
        ( Program
        , emptyProgram, isEmptyProgram, moduleNames
-       , decNamesPrg
+       , decNamesPrg, dataBindsPrg
        , lookupNamePrg, addDec
        , parseProgram, checkProgram, execProgram, execName
        ) where
@@ -10,6 +10,7 @@ import Control.Applicative
 import Text.PrettyPrint.ANSI.Leijen hiding ((<>), (<$>), empty)
 import Text.Parsec
 
+import AST
 import Eval
 import Module
 import Name
@@ -34,6 +35,9 @@ moduleNames p = map modName (getProgram p)
 
 decNamesPrg :: Program -> [Name]
 decNamesPrg = concatMap decNamesMod . getProgram
+
+dataBindsPrg :: Program -> [(Name, Kind)]
+dataBindsPrg = concatMap dataBindsMod . getProgram
 
 parseProgram :: FilePath -> IO (Either ParseError Program)
 parseProgram path = do

@@ -1,7 +1,7 @@
 {-# LANGUAGE OverloadedStrings#-}
 module Module ( Module(..), Dec(..)
               , interactiveModule, addDecToMod
-              , decName, decNamesMod, lookupNameM
+              , decName, decNamesMod, dataBindsMod, lookupNameM
               , checkModule
               ) where
 
