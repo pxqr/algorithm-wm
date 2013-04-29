@@ -3,7 +3,7 @@
 module AST ( Exp(..), Pat(..), Alt, Ty(..), Kind(..), Scheme(..)
            , Name, Subst, Term(..)
            , (.->), isFunc
-           , generalize, renameScheme
+           , generalize, renameScheme, instQs
            ) where
 
 import Data.List as L
@@ -195,33 +195,54 @@ instance Pretty Exp where
         pp (Ann e t) = parens (pretty e <+> colon <+> pretty t)
 
 
-toListTy :: Ty -> Maybe Ty
-toListTy (AppT (LitT "List") a) = return a
-toListTy _                      = Nothing
-
 isUnitTy :: Ty -> Bool
 isUnitTy (LitT "Unit") = True
 isUnitTy _             = False
 
+toPairTy :: Ty -> Maybe (Ty, Ty)
+toPairTy (AppT (AppT (LitT "Pair") a) b) = Just (a, b)
+toPairTy _                               = Nothing
+
+ppPairTy :: (Ty, Ty) -> Doc
+ppPairTy (a, b) = blue "("
+                   <> pretty a <> blue comma <+> pretty b
+               <> blue ")"
+
+toListTy :: Ty -> Maybe Ty
+toListTy (AppT (LitT "List") a) = return a
+toListTy _                      = Nothing
+
+ppListTy :: Ty -> Doc
+ppListTy a = blue "[" <> pretty a <> blue "]"
+
 instance Pretty Ty where
-  pretty ty | isUnitTy ty = blue "()"
-  pretty ty | Just a <- toListTy ty = blue "[" <> pretty a <> blue "]"
-  pretty ty = hsep $ intersperse arrow $ map (hsep . map pp . unfoldApp) $ unfoldArr ty
+  pretty ty
+   | isUnitTy ty = blue "()"
+   | Just a <- toListTy ty = ppListTy a
+   | Just prty <- toPairTy ty = ppPairTy prty
+   | otherwise = hsep $ intersperse arrow $
+       map (hsep . map pp . unfoldApp) $ unfoldArr ty
     where
       unfoldArr (AppT (AppT (LitT "->") t1) t2) = t1 : unfoldArr t2
       unfoldArr t = [t]
 
       unfoldApp t@(AppT (AppT (LitT "->") _) _) = [t]
+      unfoldApp t | Just _ <- toListTy t = [t]
+      unfoldApp t | Just _ <- toPairTy t = [t]
       unfoldApp (AppT t1 t2) = unfoldApp t1 ++ [t2]
       unfoldApp t = [t]
 
+      pp t | Just a <- toListTy t = ppListTy a
+      pp t | Just a <- toPairTy t = ppPairTy a
       pp (LitT n) = magenta (text n)
       pp (VarT n) = text n
-      pp (AbsT n t) = parens (lambda <> text n <> dot <+> pretty t)
+      pp (AbsT n t) = parens (lambda <> text n <> dot
+                                     <+> pretty t)
         where
           lambda = green (char 'λ')
 
       pp t = parens (pretty t)
+
       arrow = blue (text "->")
 
 instance Pretty a => Pretty (Scheme a) where
@@ -241,6 +262,9 @@ instance Pretty Kind where
           pp t    = parens (pretty t)
           arrow   = green (text "->")
 
+instQs :: Scheme a -> a
+instQs (Mono t) = t
+instQs (Poly _ t) = instQs t
 
 generalize :: Term a a => a -> Set Name -> Scheme a
 generalize t m = S.fold Poly (Mono t) (freeVars t `S.difference` m)

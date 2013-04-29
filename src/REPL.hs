@@ -247,11 +247,12 @@ eval e = do
   let interactiveName = "it"
   prg <- gets (flip addDec (FunD interactiveName [] e) . stProgram)
   env <- typecheck prg
-  let ty  = either fatalError id (runTI env (tyInfW e))
+  let sc  = either fatalError id (inferTy e env)
   let val = fromMaybe fatalError (execName interactiveName prg)
-  liftIO $ print $ if isFunc ty
-    then pretty (PP.red "unsaturated function type:") <+> pretty ty
-    else pretty val <+> PP.colon <+> pretty ty
+  liftIO $ print $ if isFunc (instQs sc)
+    then pretty (PP.red "unable to show function:")
+            <+> pretty (renameScheme sc)
+    else pretty val <+> PP.colon <+> pretty (renameScheme sc)
 
  where
    fatalError :: forall a . a
@@ -261,9 +262,10 @@ typeOf :: Exp -> REPL ()
 typeOf e = do
   p   <- gets stProgram
   env <- typecheck p
-  liftIO $ case runTI env (tyInfW e) of
+  liftIO $ case inferTy e env of
     Left er -> print (pretty er)
-    Right t -> print (pretty e <+> PP.colon <+> pretty t)
+    Right sc -> print (pretty e <+> PP.colon
+                        <+> pretty (renameScheme sc))
 
 kindOf :: Ty -> REPL ()
 kindOf t = do

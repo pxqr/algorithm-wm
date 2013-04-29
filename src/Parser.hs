@@ -138,9 +138,9 @@ instance Expr Pat where
   expr = same >> exprPrec "pattern" []
     [ WildP <$  sym "_"
     , unitPatP
+    , patPairC <$> patPairP
     , patNilP
     , patConsP
-    , patPairC <$> patPairP
     , ConP  <$> patConP <*> many patVarP
     , VarP  <$> patVarP
     ]
@@ -175,26 +175,32 @@ pairC (a, b) = App (App (ConE "MkPair") a) b
 unitExpP :: Parser Exp
 unitExpP = ConE "MkUnit" <$ (op "(" >> op ")")
 
+consCon :: Exp -> Exp -> Exp
+consCon = App . App (ConE "Cons")
+
 instance Expr Exp where
-  expr = fmap (L.foldl1 App) $ some $ sameOrIndented
-           >> exprPrec "expression"
-    [
-    ]
-    [ Bot  <$  sym "_|_"
-    , numC <$> integer tok
-    , listC <$> listP
-    , pairC <$> pairP
-    , unitExpP
-    , Var  <$> varP
-    , ConE <$> conP
-    , Let  <$> (sym "let" *> nameP)
-           <*> (sym "="   *> expr)
-           <*> (sym "in"  *> withPos expr <* sym "end")
-    , Case <$> (sym "case" *> expr)
-           <*> (sym "of"   *> block altP)
-    , Abs  <$> (op  "\\"   *> varP)
-           <*> (op  "."    *> expr)
-    ]
+  expr = sameOrIndented >> exprPrec "expression"
+      [ [Infix (op ":" >> return consCon) AssocRight] ]
+      [ term ]
+    where
+      term = fmap (L.foldl1 App) $ some $
+             sameOrIndented >> exprPrec "expression" []
+             [ Bot  <$  sym "_|_"
+             , numC <$> integer tok
+             , unitExpP
+             , pairC <$> pairP
+             , listC <$> listP
+             , Var  <$> varP
+             , ConE <$> conP
+             , Let  <$> (sym "let" *> nameP)
+                    <*> (sym "="   *> expr)
+                    <*> (sym "in"  *> withPos expr <* sym "end")
+             , Case <$> (sym "case" *> expr)
+                    <*> (sym "of"   *> block altP)
+             , Abs  <$> (op  "\\"   *> varP)
+               <*> (op  "."    *> expr)
+             ]
+
 
 tyLitP :: Parser Name
 tyLitP = do
@@ -211,11 +217,17 @@ tyVarP = do
 modNameP :: Parser ModName
 modNameP = ModName <$> nameP
 
+unitTyP :: Parser Ty
+unitTyP = LitT "Unit" <$ (op "(" >> op ")")
+
+pairTyP :: Parser Ty
+pairTyP = (AppT . AppT (LitT "Pair"))
+           <$> (op "(" *> expr <* op ",")
+           <*> (expr <* op ")")
+
 listTyP :: Parser Ty
 listTyP = AppT (LitT "List") <$> (op "[" *> expr <* op "]")
 
-unitTyP :: Parser Ty
-unitTyP = LitT "Unit" <$ (op "(" >> op ")")
 
 instance Expr Ty where
   expr = exprPrec "type"
@@ -231,6 +243,7 @@ instance Expr Ty where
                , AbsT <$> (op "\\" *> tyVarP)
                       <*> (op "."  *> expr)
                , unitTyP
+               , pairTyP
                , listTyP
                ]
 
