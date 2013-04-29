@@ -22,22 +22,21 @@ data Prim = Add | Sub
 type AltC = (Pat, ExpC)
 
 data ExpC = BotC
-          | LitC  Literal
           | Free  {-# UNPACK #-} !GlIx
           | Bnd   {-# UNPACK #-} !LcIx
+          | ConC  Name
           | AbsC  ExpC
           | AppC  ExpC ExpC
           | CaseC ExpC [AltC]
             deriving Show
 
 data Value = BotV
-           | LitV Literal
+           | BndV Char -- only for debug
            | ConV Name [Value]
            | AbsV (Value -> Value)
 
 instance Pretty ExpC where
     pretty BotC = onred "_|_"
-    pretty (LitC l) = pretty l
     pretty (Free i) = magenta (int i)
     pretty (Bnd  i) = blue    (pretty i)
     pretty (AbsC e) = parens (char '\\' <> pretty e)
@@ -53,24 +52,10 @@ instance Pretty Value where
       valueToExp :: Value -> Exp
       valueToExp = go ['a'..'z']
         where
-          go _ (BotV)   = Bot
-          go _ (LitV l) = Lit l
---      go _ v@(ConV "Cons" (LitV (LitChar _) : _)) = Lit $ LitStr (foldStr v)
---        where
---          foldStr :: Value -> String
---          foldStr (ConV "Cons" (LitV (LitChar x) : [xs])) = x : foldStr xs
---          foldStr (ConV "Nil" []) = ""
---          foldStr _ = error "valueToExp.foldStr: not typecheck expr"
-
---      go _ v@(ConV "Z" []) = Lit (LitInt 0)
---      go _ v@(ConV "S" [n]) = Lit (LitInt (succ (foldNat n)))
---        where
---          foldNat (ConV "Z" []) = 0
---          foldNat (ConV "S" [x]) = foldNat x
---          foldNat _              = error "value to expr"
-
-          go ns (ConV n fs) = foldl App (Lit (LitCon n)) (map (go ns) fs)
-          go (n : ns) (AbsV f) = Abs [n] (go ns (f (LitV (LitSym [n]))))
+          go _  (BotV)         = Bot
+          go _  (BndV n)       = Var [n]
+          go ns (ConV n fs)    = foldl App (ConE n) (map (go ns) fs)
+          go (n : ns) (AbsV f) = Abs [n] (go ns (f (BndV n)))
           go []   _     = error "value to expr"
 
 
@@ -86,13 +71,13 @@ link defs = V.fromList (map (toExpC [] . snd) defs)
 
     toExpC :: [Name] -> Exp -> ExpC
     toExpC _      Bot    = BotC
-    toExpC _     (Lit l) = LitC l
     toExpC localSym (Var n)
         | Just ix <- n `elemIndex` localSym = Bnd ix
         | Just ix <- n `M.lookup`  globSym  =
           if isUpper (head n) then error "toExpC" else Free ix
         |             otherwise             = error ("link: unbound symbol " ++ n)
 
+    toExpC local (ConE n) = ConC n
     toExpC local (Abs n e)     = AbsC (toExpC (n : local) e)
     toExpC local (App e1 e2)   = AppC (toExpC local e1) (toExpC local e2)
     toExpC local (Let n e1 e2) = toExpC local (App (Abs n e2) e1)
@@ -101,7 +86,6 @@ link defs = V.fromList (map (toExpC [] . snd) defs)
           mkAlt (p, e') = (p, bindPat p e')
 
           bindPat  WildP      e' = toExpC local e'
-          bindPat (LitP _)    e' = toExpC local e'
           bindPat (VarP n)    e' = toExpC local (Abs n e')
           bindPat (ConP _ ns) e' = toExpC local (foldr Abs e' ns)
 
@@ -116,10 +100,9 @@ apply v1       a = error $ "Unable to apply " ++ show (pretty v1) ++ " "
 
 eval :: EvEnv -> Stack -> ExpC -> Value
 eval _   _  BotC       = BotV
-eval _   _ (LitC (LitCon n)) = ConV n []
-eval _   _ (LitC l)    = LitV l
 eval env s (Free ix)   = eval env s (V.unsafeIndex env ix)
 eval _   s (Bnd  ix)   = s !! ix
+eval _   _ (ConC n)    = ConV n []
 eval env s (AbsC e)    = AbsV (\x -> eval env (x : s) e)
 eval env s (AppC e1 e2) = apply (eval env s e1) (eval env s e2)
 eval env s (CaseC e1   alts) = case eval env s e1 of
@@ -134,7 +117,6 @@ eval env s (CaseC e1   alts) = case eval env s e1 of
 
       match :: Value -> Pat -> Maybe [Value]
       match _              WildP        = Just []
-      match (LitV v)      (LitP l)      | v `matchLit` l = Just []  where matchLit = (==)
       match v             (VarP _)      = Just [v]
       match (ConV en evs) (ConP pn pns) | en == pn =
            if length evs == length pns then Just evs

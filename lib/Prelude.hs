@@ -21,8 +21,8 @@ data Ordering : * where
   EQ : Ordering
 
 not b = case b of
-  True  -> False
-  False -> True
+         True  -> False
+         False -> True
 
 and a b = case a of
   True  -> b

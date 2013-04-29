@@ -154,18 +154,11 @@ unifyMany :: [Ty] -> Context Ty Ty
 unifyMany [] = freshVar
 unifyMany (t : ts) = foldM (\a x -> withU (unify a x >> reify a)) t ts
 
-tyInfLit :: Literal -> Context Ty Ty
---tyInfLit (LitInt _)  = return (LitT "Int")
---tyInfLit (LitChar _) = return (LitT "Char")
---tyInfLit (LitStr _)  = return (LitT "List" `AppT` LitT "Char" )
-tyInfLit (LitCon n)  = lookupVar [] n >>= freshInst
-
 tyInfPat :: Pat -> Context Ty Ty
 tyInfPat  WildP      = freshVar
-tyInfPat (LitP l)    = tyInfLit l
 tyInfPat (VarP _)    = freshVar
 tyInfPat (ConP n ns) = do
-  ct  <- tyInfLit (LitCon n)
+  ct  <- tyInfW (ConE n)
   fty <- mapM (const freshVar) ns
   foldM applyTy ct fty
 
@@ -174,12 +167,6 @@ tyInfPats ps = mapM tyInfPat ps >>= unifyMany
 
 tyProjPat :: [Exp] -> Ty -> Pat -> Context Ty (Subst (Scheme Ty))
 tyProjPat _  _    WildP      = return []
-tyProjPat cxt _  (LitP l)    =
-  case l of
-    LitCon  n -> do
-      ty <- lookupVar cxt n
-      return [(n, ty)]
-
 tyProjPat _  t (VarP n)    = return [(n, Mono t)]
 tyProjPat _  _ (ConP _ []) = return []
 tyProjPat es t (ConP n [fin]) = do
@@ -215,8 +202,8 @@ tyInfW = tyInf []
       go _   Bot    = freshVar
 
       -- TODO: keep zipper of Exp in context env
-      go _  (Lit l) = tyInfLit l
       go es (Var n) = lookupVar es n >>= freshInst
+      go es (ConE n) = lookupVar es n >>= freshInst
       go es (Abs n e) = do
         t  <- freshVar
         t2 <- bindLocal n (Mono t) (tyInf es e)

@@ -1,6 +1,6 @@
 {-# LANGUAGE MultiParamTypeClasses, FunctionalDependencies, FlexibleInstances #-}
 {-# LANGUAGE OverloadedStrings, FlexibleContexts, RankNTypes #-}
-module AST ( Literal(..), Exp(..), Pat(..), Alt, Ty(..), Kind(..), Scheme(..)
+module AST ( Exp(..), Pat(..), Alt, Ty(..), Kind(..), Scheme(..)
            , Name, Subst, Term(..)
            , (.->)
            , generalize, renameScheme
@@ -15,12 +15,8 @@ import Text.PrettyPrint.ANSI.Leijen hiding ((<>))
 
 import Name
 
-data Literal = LitCon Name
-             | LitSym String
-               deriving (Show, Eq)
-
 data Exp = Bot
-         | Lit Literal
+         | ConE Name
          | Var Name
          | App Exp Exp
          | Abs Name Exp
@@ -30,7 +26,6 @@ data Exp = Bot
            deriving Show
 
 data Pat = WildP
-         | LitP Literal
          | VarP Name
          | ConP Name [Name]
            deriving Show
@@ -76,12 +71,10 @@ instance Term Pat Name where
   var = VarP
 
   freeVars  WildP      = S.empty
-  freeVars (LitP _)    = S.empty
   freeVars (VarP n)    = S.singleton n
   freeVars (ConP _ fs) = S.fromList fs
 
   subst  WildP      _ = WildP
-  subst (LitP l)    _ = LitP l
   subst (VarP n)    s = VarP (subst n s)
   subst (ConP n fs) s = ConP n (map (`subst`  s) fs)
 
@@ -89,7 +82,6 @@ instance Term Pat Name where
 instance Term Exp Exp where
   var   = Var
   freeVars  Bot    = S.empty
-  freeVars (Lit _) = S.empty
   freeVars (Var n) = S.singleton n
   freeVars (App e1 e2) = freeVars e1 <> freeVars e2
   freeVars (Abs n  e ) = n `S.delete` freeVars e
@@ -138,15 +130,8 @@ instance Term a a => Term (Scheme a) a where
   subst (Mono t) s = Mono (subst t s)
   subst (Poly n t) s = Poly n (subst t (filter ((n ==) . fst) s))
 
-instance Pretty Literal where
---    pretty (LitInt i)  = cyan (int i)
---    pretty (LitChar c) = cyan (char '\'' <> char c <> char '\'')
---    pretty (LitStr s)  = yellow ("\"" <> text s <> "\"")
-    pretty (LitCon  n) = blue (text n)
-
 instance Pretty Pat where
     pretty WildP    = red "_"
-    pretty (LitP l) = pretty l
     pretty (VarP n) = text n
     pretty (ConP n ns) = blue (pretty n) <+> hsep (map text ns)
 
@@ -157,8 +142,8 @@ instance Pretty Exp where
         unfoldApp t = [t]
 
         pp    Bot        = pretty (onred "_|_")
-        pp   (Lit l)     = pretty l
         pp   (Var n)     = text n
+        pp   (ConE n)    = blue (text n)
         pp t@(App _ _)   = parens (pretty t)
         pp   (Abs n e)   = parens (lambda <> text n <> dot <+> pretty e)
             where

@@ -2,7 +2,7 @@ module Parser
        ( parseFile
 
        -- * for REPL
-       , nameP, expP, tyP, kindP, inRepl
+       , nameP, expP, patP, tyP, kindP, inRepl
        ) where
 
 import Control.Applicative hiding (many, (<|>))
@@ -109,14 +109,6 @@ blockPrec msg bs = block (choice (fmap try bs)) <?> msg
 conP :: Parser Name
 conP = tyLitP
 
-instance Expr Literal where
-  expr = exprPrec "literal" []
-       [ --LitInt  <$> (fromIntegral <$> integer tok)
-       --, --LitChar <$> charLiteral tok
-         LitCon  <$> conP
-       ]
-
-
 patVarP :: Parser Name
 patVarP = tyVarP
 
@@ -125,10 +117,9 @@ patConP = tyLitP
 
 
 instance Expr Pat where
-  expr = sameOrIndented >> exprPrec "pattern" []
+  expr = same >> exprPrec "pattern" []
     [ WildP <$  sym "_"
     , ConP  <$> patConP <*> many patVarP
-    , LitP  <$> expr
     , VarP  <$> patVarP
     ]
 
@@ -148,8 +139,8 @@ instance Expr Exp where
     [
     ]
     [ Bot  <$  sym "_|_"
-    , Lit  <$> expr
     , Var  <$> varP
+    , ConE <$> conP
     , Let  <$> (sym "let" *> nameP)
            <*> (sym "="   *> expr)
            <*> (sym "in"  *> withPos expr <* sym "end")
@@ -233,6 +224,9 @@ instance Expr Module where
 
 expP :: Parser Exp
 expP = expr
+
+patP :: Parser Pat
+patP = expr
 
 tyP :: Parser Ty
 tyP = expr
