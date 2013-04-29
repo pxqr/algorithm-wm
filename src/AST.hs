@@ -140,8 +140,20 @@ instance Pretty Pat where
     pretty (VarP n) = text n
     pretty (ConP n ns) = blue (pretty n) <+> hsep (map text ns)
 
+toNat :: Exp -> Maybe Int
+toNat (ConE "Z")         = return 0
+toNat (App (ConE "S") n) = succ `fmap` toNat n
+toNat _                  = Nothing
+
+toList :: Exp -> Maybe [Exp]
+toList (ConE "Nil")                   = return []
+toList (App (App (ConE "Cons") x) xs) = (x :) `fmap` toList xs
+toList _                              = Nothing
+
 instance Pretty Exp where
-  pretty = hsep . map pp . unfoldApp
+  pretty ex | Just i <- toNat ex  = pretty (int i)
+  pretty ex | Just l <- toList ex = pretty (map pretty l)
+  pretty ex = hsep (map pp (unfoldApp ex))
       where
         unfoldApp (App e1 e2) = unfoldApp e1 ++ [e2]
         unfoldApp t = [t]

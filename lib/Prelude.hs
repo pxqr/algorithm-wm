@@ -84,6 +84,19 @@ map f l = case l of
   Nil -> Nil
   Cons x xs -> Cons (f x) (map f xs)
 
+foldr f a l = case l of
+  Nil -> a
+  Cons x xs -> f x (foldr f a xs)
+
+
+replicate n a = case n of
+  Z -> Nil
+  S n -> Cons a (replicate n a)
+
+sum : List Nat -> Nat
+sum = foldr add 0
+
+
 data StateT : * -> (* -> *) -> * -> * where
   MkStateT : (s -> m (Pair s a)) -> StateT s m a
 

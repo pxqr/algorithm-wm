@@ -32,7 +32,7 @@ strKeywords = [ "let",  "in", "end"
               ]
 
 opKeywords :: [String]
-opKeywords = [".", "=", ":", "\\", "_"]
+opKeywords = ["[", "]", ".", "=", ":", "\\", "_"]
 
 operatorChars :: String
 operatorChars = "+-*/<>="
@@ -126,12 +126,22 @@ instance Expr Pat where
 altP :: Parser Alt
 altP = withPos $ do
   p <- expr
-  sym "->"
+  op "->"
   b <- expr
   return (p, b)
 
 varP :: Parser Name
 varP = tyVarP
+
+numC :: Integer -> Exp
+numC 0 = ConE "Z"
+numC n = App (ConE "S") (numC (pred n))
+
+listP :: Parser [Exp]
+listP = op "[" *> sepBy expr (op ",") <* op "]"
+
+listC :: [Exp] -> Exp
+listC = L.foldr (App . App (ConE "Cons")) (ConE "Nil")
 
 instance Expr Exp where
   expr = fmap (L.foldl1 App) $ some $ sameOrIndented
@@ -139,6 +149,8 @@ instance Expr Exp where
     [
     ]
     [ Bot  <$  sym "_|_"
+    , numC <$> integer tok
+    , listC <$> listP
     , Var  <$> varP
     , ConE <$> conP
     , Let  <$> (sym "let" *> nameP)
@@ -146,8 +158,8 @@ instance Expr Exp where
            <*> (sym "in"  *> withPos expr <* sym "end")
     , Case <$> (sym "case" *> expr)
            <*> (sym "of"   *> block altP)
-    , Abs  <$> (sym "\\"   *> varP)
-           <*> (sym "."    *> expr)
+    , Abs  <$> (op  "\\"   *> varP)
+           <*> (op  "."    *> expr)
     ]
 
 tyLitP :: Parser Name
@@ -176,21 +188,21 @@ instance Expr Ty where
              exprPrec "type" []
                [ LitT <$> tyLitP
                , VarT <$> tyVarP
-               , AbsT <$> (sym "\\" *> tyVarP)
-                      <*> (sym "."  *> expr)
+               , AbsT <$> (op "\\" *> tyVarP)
+                      <*> (op "."  *> expr)
                ]
 
 instance Expr Kind where
   expr = exprPrec "kind"
     [ [Infix (op "->" >> return ArrK) AssocRight]
     ]
-    [ Star <$  sym "*"
+    [ Star <$  op "*"
     , VarK <$> nameP
     ]
 
 instance Expr a => Expr (Scheme a) where
   expr = exprPrec "scheme"    []
-    [ Poly <$> (sym "forall" *> nameP <* sym ".") <*> expr
+    [ Poly <$> (sym "forall" *> nameP <* op ".") <*> expr
     , Mono <$> expr
     ]
 
@@ -199,14 +211,14 @@ funBody = expr
 
 instance Expr Dec where
   expr = exprPrec "declaration" []
-    [ SigD  <$> (nameP <*  sym ":") <*> (indented >> schemeP)
-    , (FunD  <$>  nameP <*> (many nameP <* sym "=")) <+/> funBody
+    [ SigD  <$> (nameP <*  op ":") <*> (indented >> schemeP)
+    , (FunD  <$>  nameP <*> (many nameP <* op "=")) <+/> funBody
     , DataD <$> (sym "data" *> nameP)
-            <*> (sym ":"    *> (indented >> expr))
+            <*> (op  ":"    *> (indented >> expr))
             <*> (try (sym "where" *> block consP) <|> pure [])
     ]
    where
-     consP = (,) <$> (try nameP <|> newOp) <*> (sym ":" *> expr)
+     consP = (,) <$> (try nameP <|> newOp) <*> (op ":" *> expr)
 
 
 importP :: Parser ModName
