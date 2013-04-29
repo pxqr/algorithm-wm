@@ -83,6 +83,7 @@ instance Term Exp Exp where
   var   = Var
   freeVars  Bot    = S.empty
   freeVars (Var n) = S.singleton n
+  freeVars (ConE _) = S.empty
   freeVars (App e1 e2) = freeVars e1 <> freeVars e2
   freeVars (Abs n  e ) = n `S.delete` freeVars e
   freeVars (Let n e1 e2) = freeVars e1 <> freeVars (Abs n e2)

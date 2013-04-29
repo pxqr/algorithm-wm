@@ -14,10 +14,10 @@ import Unify
 import TyError
 
 
---runUnifier :: Unifier Ty a -> Result a
+runUnifier :: Monad m => StateT [s] m a -> m a
 runUnifier u = evalStateT u []
 
---runContext :: Context a -> TyEnv -> Unifier Ty a
+runContext :: Num s => Monad m => ReaderT r (StateT s m) a -> r -> m a
 runContext c env = evalStateT (runReaderT c env) 0
 
 runTI :: TyEnv -> Context t a -> Result a
@@ -146,7 +146,7 @@ applyTy t1 t2 = do
 recDef :: Name -> Context Ty Ty -> Context Ty Ty
 recDef n c = do
   t <- freshVar
-  bindLocal n (Mono t) c -- TODO
+  _ <- bindLocal n (Mono t) c -- TODO
   withU $ reify t
 
 
@@ -192,6 +192,8 @@ tyProjPat es t (ConP n [a, b]) = do
     unify patTy t
 
   return [(a, Mono fra), (b, Mono frb)]
+
+tyProjPat _ _ _ = error "tyProjPat: not implemented yet"
 
 
 tyInfW :: Exp -> Context Ty Ty

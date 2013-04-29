@@ -66,14 +66,14 @@ unify _t1 _t2 = go [(_t1, _t2)] _t1 _t2
     where
       go _   (LitT n)     (LitT n')    |  n == n'  = return ()
 
-      go cxt (VarT n)      (VarT  m)
+      go _ (VarT n)      (VarT  m)
         | n == m    = return ()
 --        | otherwise = do return ()
 --          assignVar cxt n (VarT m)
 --          assignVar cxt m (VarT n)
 
-      go cxt (AbsT n t)    t1          = error "unify"
-      go cxt     t1        (AbsT n t)  = error "unify"
+--      go cxt (AbsT n t)    t1          = error "unify"
+--      go cxt     t1        (AbsT n t)  = error "unify"
 
       go cxt t            (VarT n)     = assignVar cxt n t
       go cxt (VarT n)     t            = assignVar cxt n t

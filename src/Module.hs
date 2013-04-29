@@ -8,8 +8,6 @@ module Module ( Module(..), Dec(..)
 import Control.Arrow (second)
 import Control.Applicative
 import Control.Monad.Error
-import Control.Monad.State
-import Control.Monad.Reader
 import Data.Maybe
 import Data.Monoid
 import qualified Data.Set as S
@@ -126,7 +124,7 @@ checkModule m = do
         tyAnn <- freshInst sc
         scAnn <- generalizeM tyAnn
 
-        tyInfW (Ann (desugar e ps) tyAnn)
+        _ <- tyInfW (Ann (desugar e ps) tyAnn)
         return scAnn
 
       return ((n, HasType (renameScheme ty)) : env)

@@ -17,7 +17,6 @@ import Module
 type GlIx = Int
 type LcIx = Int
 
-data Prim = Add | Sub
 
 type AltC = (Pat, ExpC)
 
@@ -38,6 +37,7 @@ data Value = BotV
 instance Pretty ExpC where
     pretty BotC = onred "_|_"
     pretty (Free i) = magenta (int i)
+    pretty (ConC n) = yellow (text n)
     pretty (Bnd  i) = blue    (pretty i)
     pretty (AbsC e) = parens (char '\\' <> pretty e)
     pretty (AppC e1 e2) = parens (pretty e1 <+> pretty e2)
@@ -77,7 +77,7 @@ link defs = V.fromList (map (toExpC [] . snd) defs)
           if isUpper (head n) then error "toExpC" else Free ix
         |             otherwise             = error ("link: unbound symbol " ++ n)
 
-    toExpC local (ConE n) = ConC n
+    toExpC _     (ConE n)      = ConC n
     toExpC local (Abs n e)     = AbsC (toExpC (n : local) e)
     toExpC local (App e1 e2)   = AppC (toExpC local e1) (toExpC local e2)
     toExpC local (Let n e1 e2) = toExpC local (App (Abs n e2) e1)

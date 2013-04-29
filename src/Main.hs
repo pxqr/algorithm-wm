@@ -4,10 +4,8 @@ module Main where
 
 import Control.Applicative
 import Data.Monoid
-import Data.Maybe
 import Data.Version (showVersion)
 import Options.Applicative
-import System.Environment
 import Paths_algorithm_wm (version)
 
 import REPL

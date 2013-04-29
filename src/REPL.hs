@@ -10,7 +10,6 @@ module REPL
 
 import Control.Applicative ((<$>), some)
 import Control.Monad.State
-import Control.Monad.Error
 import Control.Exception as E
 import Control.Concurrent
 import Data.Monoid
@@ -19,14 +18,11 @@ import Data.Char
 import Data.Typeable (Typeable)
 import Text.Parsec as P
 import Text.Parsec.String
-import Text.PrettyPrint.ANSI.Leijen ((</>), (<+>),
-                                     indent, pretty, line, Doc)
+import Text.PrettyPrint.ANSI.Leijen ((<+>), indent, pretty, line, Doc)
 import qualified Text.PrettyPrint.ANSI.Leijen as PP
 
 import System.INotify
 import qualified System.Console.Haskeline as Line
-import System.Console.ANSI
-import System.IO
 import System.Random
 
 import AST
@@ -93,12 +89,12 @@ cmdP = many space >> choice (map P.try
   ])
   where
     arglessP name = do
-      char ':'
+      _ <- char ':'
       let long  = P.try (string name) >> return ()
       let short = P.char (head name) >> return ()
       long <|> short
 
-    withArgsP name = arglessP name >> some space
+    withArgsP name = arglessP name >> some space >> return ()
 
 data Settings = Settings {
     sePrompt     :: String
@@ -181,10 +177,10 @@ trackFile :: FilePath -> REPL ()
 trackFile path = do
     ino <- gets stINotify
     st  <- get
-    liftIO $ addWatch ino [Modify] path (handler st)
+    _   <- liftIO $ addWatch ino [Modify] path (handler st)
     return ()
   where
-    handler st Modified { isDirectory = False, maybeFilePath = Nothing  } = do
+    handler _ Modified { isDirectory = False, maybeFilePath = Nothing  } = do
       putStrLn "Note that file change so might like to reload it..."
 
 
@@ -283,10 +279,10 @@ infoOf n = do
     else mapM_ (print . pretty) info
 
 suppressE :: Cmd -> REPL () -> REPL ()
-suppressE cmd action = Line.catch action (handler cmd)
+suppressE cmd action = Line.catch action handler
   where
-    handler :: Cmd -> REPLException -> REPL ()
-    handler cmd e = liftIO $ print $
+    handler :: REPLException -> REPL ()
+    handler e = liftIO $ print $
        PP.red (PP.text "Error occurred:") <> PP.line <>
          PP.indent 2 (pretty e) <> PP.line <>
        PP.red (PP.text "While executing:") <> PP.line <>
@@ -295,8 +291,9 @@ suppressE cmd action = Line.catch action (handler cmd)
 
 
 execCmd :: Cmd -> REPL ()
-execCmd c@Quit       = quit
-execCmd   (Help c)   = help c >> loop
+execCmd    Quit       = quit
+execCmd   (Help c)    = help c >> loop
+execCmd   (Set  _)    = liftIO (putStrLn "Not implemented") >> loop
 execCmd c@(Load path) = do
   suppressE c (load (takeWhile (not . isSpace) path))
   loop
