@@ -3,10 +3,19 @@ module Prelude where
 undefined : a
 undefined = _|_
 
+id : forall a. a -> a
 id x = x
+
+const : a -> b -> a
 const a b = a
+
+flip : (a -> b -> c) -> b -> a -> c
 flip f a b = f b a
+
+o : (b -> c) -> (a -> b) -> (a -> c)
 o f g x = f (g x)
+
+fix : (a -> a) -> a
 fix f = f (fix f)
 
 
@@ -14,9 +23,6 @@ unifiable : a -> a -> a
 unifiable = _|_
 
 data Void : *
-
-voidTest : Void
-voidTest = undefined
 
 data Unit : * where
   MkUnit : Unit
@@ -75,6 +81,19 @@ mul a b = case a of
   Z   -> Z
   S n -> add b (mul n b)
 
+min : Nat -> Nat -> Nat
+min a b = case a of
+  Z -> Z
+  S n -> case b of
+    Z -> Z
+    S m -> S (min n m)
+
+max : Nat -> Nat -> Nat
+max a b = case a of
+  Z -> b
+  S n -> case b of
+    Z -> a
+    S m -> S (max n m)
 
 {- ------------------------------------------------------------------ -}
 data Ordering : * where
@@ -265,6 +284,9 @@ foldr f a l = case l of
   [] -> a
   x : xs -> f x (foldr f a xs)
 
+foldr1 : (a -> b -> b) -> [a] -> b
+foldr1 f = foldr f undefined
+
 map : (a -> b) -> [a] -> [b]
 map f = foldr (o Cons f) []
 
@@ -273,6 +295,17 @@ mapMaybe : [Maybe a] -> [a]
 mapMaybe
 -}
 {- -------------------- specialized folds -}
+minimum : Nat -> [Nat] -> Nat
+minimum = foldr min
+
+maximum : Nat -> [Nat] -> Nat
+maximum = foldr max
+
+length : [a] -> Nat
+length l = case l of
+  [] -> Z
+  x : xs -> S (length xs)
+
 concat : [a] -> [a] -> [a]
 concat = flip (foldr Cons)
 
@@ -294,13 +327,97 @@ all f xs = and (map f xs)
 any : (a -> Bool) -> List a -> Bool
 any f xs = or (map f xs)
 
-data StateT : * -> (* -> *) -> * -> * where
-  MkStateT : (s -> m (Pair s a)) -> StateT s m a
-
-data Apply : (a -> *) -> a -> * where
-  MkApply : m a -> Apply m a
 
 {-
 test1 = (1, case (_|_, 3) of (n, m) -> (1, m))
 
 -}
+
+
+data StateT : * -> (* -> *) -> * -> * where
+   MkStateT : (s -> m (Pair s a)) -> StateT s m a
+
+
+data Id : * -> * where
+   MkId : a -> Id a
+
+data Const : * -> a -> * where
+   MkConst : a -> Const a b
+
+data Apply : (a -> *) -> a -> * where
+   MkApply : m a -> Apply m a
+
+data Fix : (* -> *) -> * where
+   MkFix : f (Fix f) -> Fix f
+
+data Flip : (a -> b -> *) -> b -> a -> * where
+   MkFlip : f b a -> Flip f a b
+
+data Compose : (b -> *) -> (a -> b) -> * -> * where
+   MkCompose : f (g a) -> Compose f g a
+
+data On : (b -> b -> *) -> (a -> b) -> a -> a -> * where
+   MkOn : g (f a) (f b) -> On g f a b
+
+data First : (* -> *) -> (* -> * -> *) -> * -> * -> * where
+   MkFirst : p (f a) b -> First f p a b
+
+data Second : (* -> *) -> (* -> * -> *) -> * -> * -> * where
+   MkSecond : p a (g b) -> First g p a b
+
+data Both : (* -> *) -> (* -> *) -> (* -> * -> *) -> * -> * -> * where
+   MkBoth : p (f a) (g a) -> Both f g p a b
+
+
+toNat : Fix Maybe -> Nat
+toNat f = case f of
+  MkFix m -> case m of
+    Nothing -> Z
+    Just f1 -> S (toNat f1)
+
+fromNat : Nat -> Fix Maybe
+fromNat n =
+  MkFix (
+    case n of
+      Z -> Nothing
+      S n1 -> Just (fromNat n1)
+  )
+
+sizeF : Fix List -> Nat
+sizeF f = case f of
+  MkFix xs -> S (sum (map sizeF xs))
+
+depthF : Fix List -> Nat
+depthF f = case f of
+  MkFix xs -> succ (maximum 0 (map depthF xs))
+
+
+
+
+test0 : Id (Id ())
+test0 = MkId (MkId ())
+
+test1 : Const Bool StateT
+test1 = MkConst True
+
+test2 : Apply (Const Ordering) List
+test2 = MkApply (MkConst EQ)
+
+test3 : Flip Either Bool Nat
+test3 = MkFlip (Left 0)
+
+test4 : Compose List Maybe Bool
+test4 = MkCompose [Just True]
+
+test5 : Fix List
+test5 = MkFix [ MkFix []
+              , MkFix [ MkFix []
+                      , MkFix [ MkFix [] ]
+                      , MkFix [], MkFix [] ]
+              , MkFix [] ]
+
+test6 : On Pair List Nat Bool
+test6 = MkOn ([1, 2], [False])
+
+test7 : First List Const Bool Unit
+test7 = MkFirst (MkConst undefined)

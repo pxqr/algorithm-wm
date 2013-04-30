@@ -257,7 +257,7 @@ instance Pretty Kind where
           unfoldArr (ArrK k1 k2) = k1 : unfoldArr k2
           unfoldArr k = [k]
 
-          pp Star = cyan  "*"
+          pp Star = cyan "*"
           pp (VarK n) = blue (text n)
           pp t    = parens (pretty t)
           arrow   = green (text "->")
