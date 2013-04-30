@@ -27,7 +27,7 @@ import qualified Text.PrettyPrint.ANSI.Leijen as PP
 import System.INotify
 import qualified System.Console.Haskeline as Line
 import System.Random
-
+import System.FilePath ((</>))
 
 import AST
 import Module
@@ -53,7 +53,11 @@ cmdDesc =
   \Every command have short alias consisting of first command letter.\n\
   \For exsample:\n\
   \  \":quit\" and \":q\" are the same\n\
-  \  \":load some/path\" and \":l some/path\" are the same"
+  \  \":load some/path\" and \":l some/path\" are the same\n\
+  \\n\
+  \Many commands support context and type aware completions;\n\
+  \just press <TAB> every time you type and see that will happed.\n"
+
 
 
 data Cmd = Quit
@@ -105,6 +109,7 @@ data Settings = Settings {
   , seStdlib     :: String
   , seShowTyEnv  :: Bool
   , seShowParsed :: Bool
+  , seHistoryPath :: FilePath
   } deriving Show
 
 data RState = RState {
@@ -186,7 +191,8 @@ trackFile path = do
     return ()
   where
     handler _ Modified { isDirectory = False, maybeFilePath = Nothing  } = do
-      putStrLn "Note that file change so might like to reload it..."
+--      putStrLn "Note that file change so might like to reload it..."
+      return ()
 
 
     handler _ e = putStrLn $ "warning: skipping event " ++ show e
@@ -334,6 +340,9 @@ completer inp@(rpref, suff) = do
     case dropWhile isSpace (reverse rpref) of
       ":" -> return (rpref, cmdCompletions)
       s | ":l " `isPrefixOf` s -> Line.completeFilename inp
+        -- TODO for each command
+        | ":l"  `isPrefixOf` s -> Line.completeWord Nothing ""
+                                     (const $ return $ [Line.simpleCompletion ":load "]) inp
       s | ":k " `isPrefixOf` s -> do
          bs <- nub . sortBy (comparing fst) <$> gets (dataBindsPrg . stProgram)
          let spaceSyms = "()<>- "
@@ -360,11 +369,12 @@ completer inp@(rpref, suff) = do
              let alts   = note : tyAlts
              Line.completeWord Nothing spaceSyms (genericCompl alts) inp
 
-      s | ":i " `isPrefixOf` s -> do
+      s | (":i " `isPrefixOf` s) || s == "" -> do
          ns <- gets (sort . nub . decNamesPrg . stProgram)
          Line.completeWord Nothing " " (regularCompl ns) inp
 
       _ -> Line.noCompletion inp
+
   where
    cmdCompletions = map mkCompl cmds
      where
@@ -388,7 +398,8 @@ completer inp@(rpref, suff) = do
 inIO :: RState -> REPL () -> IO ()
 inIO s r = evalStateT (Line.runInputT lineSettings r) s
   where
-    lineSettings = Line.setComplete completer Line.defaultSettings
+    lineSettings = Line.Settings completer histPath True
+    histPath = Just $ seHistoryPath $ stSettings s
 
 runRepl :: Settings -> IO ()
 runRepl s = do
@@ -397,7 +408,9 @@ runRepl s = do
 
   withINotify $ \ino -> do
     let initState = RState s ino Nothing emptyProgram Nothing
-    inIO initState $ loop
+    inIO initState $ do
+      load (seStdlib s </> "Prelude.hs")
+      loop
     return ()
 
   putStrLn "Bye, bye...                         ._."
