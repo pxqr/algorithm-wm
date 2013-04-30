@@ -15,6 +15,9 @@ flip f a b = f b a
 o : (b -> c) -> (a -> b) -> (a -> c)
 o f g x = f (g x)
 
+oo : (c -> d) -> (b -> c) -> (a -> b) -> (a -> d)
+oo f g = o (o f) (o g)
+
 fix : (a -> a) -> a
 fix f = f (fix f)
 
@@ -187,6 +190,16 @@ isNothing = maybe True (const False)
 isJust : Maybe a -> Bool
 isJust = maybe False (const True)
 
+mapM : (a -> b) -> Maybe a -> Maybe b
+mapM f = maybe Nothing (o Just f)
+
+joinM : Maybe (Maybe a) -> Maybe a
+joinM = maybe Nothing id
+
+bindM : Maybe a -> (a -> Maybe b) -> Maybe b
+bindM m f = joinM (mapM f m)
+
+bindFM = flip bindM
 
 data Either : * -> * -> * where
   Left  : a -> Either a b
@@ -287,14 +300,30 @@ foldr f a l = case l of
 foldr1 : (a -> b -> b) -> [a] -> b
 foldr1 f = foldr f undefined
 
-map : (a -> b) -> [a] -> [b]
-map f = foldr (o Cons f) []
+foldl : (b -> a -> b) -> b -> [a] -> b
+foldl f a l = case l of
+  [] -> a
+  x : xs -> foldl f (f a x) xs
+
+unfoldr : (b -> Maybe (a, b)) -> b -> [a]
+unfoldr f b = case f b of
+  Nothing -> []
+  Just p  -> case p of
+    (x, b1) -> x : unfoldr f b1
+
+{- take 1 (unfoldr (const (Just (1, undefined))) undefined) -}
 
 {-
 mapMaybe : [Maybe a] -> [a]
 mapMaybe
 -}
 {- -------------------- specialized folds -}
+reverse : [a] -> [a]
+reverse = foldl (flip Cons) []
+
+map : (a -> b) -> [a] -> [b]
+map f = foldr (o Cons f) []
+
 minimum : Nat -> [Nat] -> Nat
 minimum = foldr min
 
@@ -302,12 +331,13 @@ maximum : Nat -> [Nat] -> Nat
 maximum = foldr max
 
 length : [a] -> Nat
-length l = case l of
-  [] -> Z
-  x : xs -> S (length xs)
+length = foldr (const succ) 0
 
-concat : [a] -> [a] -> [a]
-concat = flip (foldr Cons)
+append : [a] -> [a] -> [a]
+append = flip (foldr Cons)
+
+concat : [[a]] -> [a]
+concat = foldr append []
 
 sum : [Nat] -> Nat
 sum = foldr add 0
@@ -333,6 +363,60 @@ test1 = (1, case (_|_, 3) of (n, m) -> (1, m))
 
 -}
 
+data Queue : * -> * where
+  Qu : [a] -> [a] -> Queue a
+
+emptyQ : Queue a
+emptyQ = Qu [] []
+
+isEmptyQ : Queue a -> Bool
+isEmptyQ q = case q of
+  Qu a b -> con (null a) (null b)
+
+showQ : Queue a -> [a]
+showQ q = case q of
+  Qu a b -> append a (reverse b)
+
+balanceQ : Queue a -> Queue a
+balanceQ q = case q of
+  Qu a b -> case b of
+    [] -> Qu [] (reverse a)
+    x : xs -> q
+
+enqueue : a -> Queue a -> Queue a
+enqueue e q = case q of
+  Qu a b -> Qu (e : a) b
+
+dequeue : Queue a -> Maybe (a, Queue a)
+dequeue q = case balanceQ q of
+  Qu a b -> case b of
+    [] -> Nothing
+    x : xs -> Just (x, Qu a xs)
+
+fromListQ : [a] -> Queue a
+fromListQ = foldr enqueue emptyQ
+
+toListQ : Queue a -> [a]
+toListQ = unfoldr dequeue
+
+reverseQ : Queue a -> Queue a
+reverseQ = o fromListQ toListQ
+
+
+data Tree : * -> * where
+  Node : a -> [Tree a] -> Tree a
+
+
+
+data Zero : *
+data Succ : * -> *
+data Vec  : * -> * -> * where
+    NilV  : Vec Zero a
+    ConsV : a -> Vec n a -> Vec (Succ n) a
+
+test100 = case () of
+  () -> NilV
+  () -> ConsV 0 NilV
 
 data StateT : * -> (* -> *) -> * -> * where
    MkStateT : (s -> m (Pair s a)) -> StateT s m a
