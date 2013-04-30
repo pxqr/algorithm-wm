@@ -9,6 +9,7 @@ module REPL
        ) where
 
 import Control.Applicative ((<$>), some)
+import Control.Arrow (second)
 import Control.Monad.State
 import Control.Exception as E
 import Control.Concurrent
@@ -16,6 +17,7 @@ import Data.Monoid
 import Data.Maybe
 import Data.Char
 import Data.List as L
+import Data.Ord
 import Data.Typeable (Typeable)
 import Text.Parsec as P
 import Text.Parsec.String
@@ -26,13 +28,14 @@ import System.INotify
 import qualified System.Console.Haskeline as Line
 import System.Random
 
+
 import AST
 import Module
 import Program
 import Parser
 import TC
 import TyError
-
+import Unify
 
 cmdDesc :: String
 cmdDesc =
@@ -327,17 +330,39 @@ loop = do
     Right cmd -> execCmd cmd
 
 completer :: Line.CompletionFunc RMonad
-completer inp@(rpref, _) = do
+completer inp@(rpref, suff) = do
     case dropWhile isSpace (reverse rpref) of
       ":" -> return (rpref, cmdCompletions)
       s | ":l " `isPrefixOf` s -> Line.completeFilename inp
       s | ":k " `isPrefixOf` s -> do
-         ns <- gets (sort . nub . map fst . dataBindsPrg . stProgram)
-         Line.completeWord Nothing " " (genericCompl ns) inp
+         bs <- nub . sortBy (comparing fst) <$> gets (dataBindsPrg . stProgram)
+         let spaceSyms = "()<>- "
+         let env = map (second HasKind) bs
+         let varNm = "it"
+         let tyStr = drop 2 s ++ " " ++ varNm ++ " " ++ suff
+         let colorBind c n kd = (n, c (PP.text n) <+> PP.colon <+> pretty kd)
+
+         case parseTy tyStr of
+           Right ty
+            | Right mostCmnKdSc <- inferKdOf varNm ty env -> do
+             let mostCmnKd = instQs mostCmnKdSc
+             let (ok, nok) = partition (isUnifiable mostCmnKd . snd) bs
+
+             let okAlts  = map (uncurry (colorBind (PP.underline . PP.green))) ok
+             let nokAlts = map (uncurry (colorBind PP.red)) nok
+             let note = ("", PP.green "<----- kind aware completions ----->")
+             let alts = [note] ++ nokAlts ++ okAlts
+             Line.completeWord Nothing spaceSyms (genericCompl alts) inp
+
+           _ -> do
+             let note = ("", PP.red "<----- all available completions ----->")
+             let tyAlts = map (uncurry (colorBind id)) bs
+             let alts   = note : tyAlts
+             Line.completeWord Nothing spaceSyms (genericCompl alts) inp
 
       s | ":i " `isPrefixOf` s -> do
          ns <- gets (sort . nub . decNamesPrg . stProgram)
-         Line.completeWord Nothing " " (genericCompl ns) inp
+         Line.completeWord Nothing " " (regularCompl ns) inp
 
       _ -> Line.noCompletion inp
   where
@@ -348,16 +373,17 @@ completer inp@(rpref, _) = do
                    ]
        mkCompl c = Line.Completion [head c] c True
 
-   genericCompl ns str =
-       return $ map mkCompl $ filter (str `isPrefixOf`) ns
-     where
-       mkCompl str = Line.Completion str (ppAlter str) False
+   regularCompl ns = genericCompl (zip ns (map (PP.blue . PP.text) ns))
+
+   genericCompl ns str = return $ map mkCompl $
+      filter ((str `isPrefixOf`) . fst) ns
          where
            ppAlter al@(x : _)
              | isUpper x = show (PP.blue (PP.text al))
              | otherwise = al
            ppAlter _ = []
 
+           mkCompl (n, ann) = Line.Completion n (show ann) True
 
 inIO :: RState -> REPL () -> IO ()
 inIO s r = evalStateT (Line.runInputT lineSettings r) s

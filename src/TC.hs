@@ -14,14 +14,15 @@ import Unify
 import TyError
 
 
-runUnifier :: Monad m => StateT [s] m a -> m a
-runUnifier u = evalStateT u []
-
 runContext :: Num s => Monad m => ReaderT r (StateT s m) a -> r -> m a
 runContext c env = evalStateT (runReaderT c env) 0
 
+initTyEnv :: TyEnv
+initTyEnv = [ ("->",        HasKind $ ArrK Star (ArrK Star Star))
+            ]
+
 runTI :: TyEnv -> Context t a -> Result a
-runTI env c = runUnifier (runContext c env)
+runTI env c = runUnifier (runContext c (initTyEnv ++ env))
 
 
 inferTy :: Exp -> TyEnv -> Result (Scheme Ty)
@@ -41,6 +42,14 @@ inferKd :: Ty -> TyEnv -> Result (Scheme Kind)
 inferKd t env =
   runTI env $ generalizeM t >>= \sc -> do
     bindKinds sc (kdInf >=> generalizeM)
+
+inferKdOf :: Name -> Ty -> TyEnv -> Result (Scheme Kind)
+inferKdOf n t env = do
+  runTI env $ generalizeM t >>= \sc -> do
+    bindKinds sc $ \ty -> do
+      kdInf ty
+      lookupTyVar n >>= withUKd . reify >>= generalizeM
+
 
 data Info = HasType (Scheme Ty)
           | HasKind Kind

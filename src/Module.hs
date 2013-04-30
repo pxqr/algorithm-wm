@@ -80,10 +80,6 @@ interactiveModule d = Module (ModName "REPL.Interactive") [] [d]
 addDecToMod :: Dec -> Module -> Module
 addDecToMod d m = m { modDecs = modDecs m ++ [d] }
 
-initTyEnv :: TyEnv
-initTyEnv = [ ("->",        HasKind $ ArrK Star (ArrK Star Star))
-            ]
-
 checkModule :: Module -> Result TyEnv
 checkModule m = do
     grm <- groupDec (modDecs m)

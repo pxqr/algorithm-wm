@@ -1,6 +1,6 @@
 {-# LANGUAGE FlexibleContexts, OverloadedStrings #-}
-module Unify (UnifierM, Unifier, UFailure
-             , reify, unify, unifyKd
+module Unify (UnifierM, Unifier, UFailure, runUnifier
+             , reify, unify, unifyKd, isUnifiable
              , (||=)
              ) where
 
@@ -47,6 +47,10 @@ type UResult t = Either (UFailure t)
 type UnifierM t m = StateT (Subst t) m
 
 type Unifier t = UnifierM t (UResult t)
+
+runUnifier :: Monad m => StateT [s] m a -> m a
+runUnifier u = evalStateT u []
+
 
 bindVar :: Name -> t -> Unifier t ()
 bindVar n t = modify ((n, t) :)
@@ -120,3 +124,8 @@ unifyKd = go
       | VarK n' <- t, n == n'   = return ()
       | n `S.member` freeVars t = throwError (OccChkFailE n t [])
       |       otherwise         = bindVar n t
+
+isUnifiable :: Kind -> Kind -> Bool
+isUnifiable a b = case runUnifier (unifyKd a b) of
+  Right _ -> True
+  _       -> False

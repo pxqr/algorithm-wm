@@ -2,7 +2,7 @@ module Parser
        ( parseFile
 
        -- * for REPL
-       , nameP, expP, patP, tyP, kindP, inRepl
+       , nameP, expP, patP, tyP, kindP, parseTy, inRepl
        ) where
 
 import Control.Applicative hiding (many, (<|>))
@@ -324,3 +324,6 @@ inRepl p = do
   case res of
     Left e  -> fail (show e)
     Right r -> return r
+
+parseTy :: String -> Either ParseError Ty
+parseTy = parse (inRepl (many space >> tyP)) ":interactive"
