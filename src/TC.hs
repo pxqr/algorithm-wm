@@ -30,7 +30,7 @@ inferTy e env = runTI env $ tyInfW e >>= generalizeM
 
 inferDecTy :: Name -> Exp -> TyEnv -> Result (Scheme Ty)
 inferDecTy n e env = runTI env $ withDef $
-  recDef n (tyInfW e) >>= generalizeM
+  recDef n (tyInfW e) >>= withU . reify  >>= generalizeM
 
 checkDecTy :: Name -> Exp -> Scheme Ty
               -> TyEnv -> Result (Scheme Ty)
@@ -167,7 +167,7 @@ recDef :: Name -> Context Ty Ty -> Context Ty Ty
 recDef n c = do
   t <- freshVar
   t' <- bindLocal n (Mono t) c -- TODO
-  withU $ reify t'
+  withU $ unify t t' >> reify t'
 
 
 unifyMany :: [Ty] -> Context Ty Ty

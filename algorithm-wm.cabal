@@ -47,6 +47,7 @@ executable algorithm-wm
     , indents
 
     , directory  == 1.1.*
+    , filepath
     , ansi-wl-pprint
     , ansi-terminal
     , hinotify

@@ -369,11 +369,9 @@ completer inp@(rpref, suff) = do
              let alts   = note : tyAlts
              Line.completeWord Nothing spaceSyms (genericCompl alts) inp
 
-      s | (":i " `isPrefixOf` s) || s == "" -> do
+      _ -> do
          ns <- gets (sort . nub . decNamesPrg . stProgram)
-         Line.completeWord Nothing " " (regularCompl ns) inp
-
-      _ -> Line.noCompletion inp
+         Line.completeWord Nothing "(),[]<>-=: " (regularCompl ns) inp
 
   where
    cmdCompletions = map mkCompl cmds
