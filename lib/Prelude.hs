@@ -12,7 +12,7 @@ const a b = a
 flip : (a -> b -> c) -> b -> a -> c
 flip f a b = f b a
 
-o : (b -> c) -> (a -> b) -> (a -> c)
+{- o : (b -> c) -> (a -> b) -> (a -> c) -}
 o f g x = f (g x)
 
 oo : (c -> d) -> (b -> c) -> (a -> b) -> (a -> d)
@@ -25,7 +25,8 @@ fix f = f (fix f)
 unifiable : a -> a -> a
 unifiable = _|_
 
-data Void : *
+data Void : * where
+  Voi : Void
 
 data Unit : * where
   MkUnit : Unit
@@ -216,7 +217,7 @@ bimap f g = either (o Left f) (o Right g)
 mapLeft : (a -> b) -> Either a c -> Either b c
 mapLeft f = bimap f id
 
-mapRight : (a -> b) -> Either a b -> Either a c
+mapRight : (a -> b) -> Either c a -> Either c b
 mapRight g = bimap id g
 
 
@@ -318,6 +319,7 @@ mapMaybe : [Maybe a] -> [a]
 mapMaybe
 -}
 {- -------------------- specialized folds -}
+
 reverse : [a] -> [a]
 reverse = foldl (flip Cons) []
 
@@ -403,24 +405,9 @@ reverseQ : Queue a -> Queue a
 reverseQ = o fromListQ toListQ
 
 
-data Tree : * -> * where
-  Node : a -> [Tree a] -> Tree a
-
-
-
-data Zero : *
-data Succ : * -> *
-data Vec  : * -> * -> * where
-    NilV  : Vec Zero a
-    ConsV : a -> Vec n a -> Vec (Succ n) a
-
-test100 = case () of
-  () -> NilV
-  () -> ConsV 0 NilV
 
 data StateT : * -> (* -> *) -> * -> * where
    MkStateT : (s -> m (Pair s a)) -> StateT s m a
-
 
 data Id : * -> * where
    MkId : a -> Id a
@@ -437,7 +424,7 @@ data Fix : (* -> *) -> * where
 data Flip : (a -> b -> *) -> b -> a -> * where
    MkFlip : f b a -> Flip f a b
 
-data Compose : (b -> *) -> (a -> b) -> * -> * where
+data Compose : (b -> *) -> (a -> b) -> a -> * where
    MkCompose : f (g a) -> Compose f g a
 
 data On : (b -> b -> *) -> (a -> b) -> a -> a -> * where
@@ -476,8 +463,6 @@ depthF f = case f of
   MkFix xs -> succ (maximum 0 (map depthF xs))
 
 
-
-
 test0 : Id (Id ())
 test0 = MkId (MkId ())
 
@@ -505,3 +490,18 @@ test6 = MkOn ([1, 2], [False])
 
 test7 : First List Const Bool Unit
 test7 = MkFirst (MkConst undefined)
+
+data Unifiable : a -> a -> * where
+   unify : Unifiable a a
+
+data Coerse : * where
+  coerse : a -> b
+
+data Fin : Nat -> * where
+  Fino : Fin 0
+  Fins : Fin !n -> Fin (S n)
+
+{- fin : Nat -> Fin n -}
+fin n = case n of
+  Z   -> Fino
+  S n -> Fins (fin n)

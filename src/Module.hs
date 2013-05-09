@@ -12,6 +12,7 @@ import Data.Maybe
 import Data.Monoid
 import qualified Data.Set as S
 import Text.PrettyPrint.ANSI.Leijen hiding ((<>), (<$>), empty)
+import Debug.Trace
 
 import AST
 import Name
@@ -21,7 +22,7 @@ import TyError
 
 type ConDef = (Name, Scheme Ty)
 
-data Dec = DataD Name Kind [ConDef]
+data Dec = DataD Name (Maybe Kind) [ConDef]
          | SigD  Name (Scheme Ty)
          | FunD  Name [Name] Exp
            deriving Show
@@ -64,8 +65,8 @@ decNamesMod = concatMap decName . modDecs
 dataBindsMod :: Module -> [(Name, Kind)]
 dataBindsMod = concatMap toDataBind  . modDecs
   where
-    toDataBind (DataD n kd _) = [(n, kd)]
-    toDataBind _              = []
+    toDataBind (DataD n (Just kd) _) = [(n, kd)]
+    toDataBind _                     = []
 
 lookupNameM :: Name -> Module -> [Dec]
 lookupNameM n = mapMaybe getInfo . modDecs
@@ -99,12 +100,6 @@ checkModule m = do
     groupDec [] = return []
 
 
-    checkCon env (n, sc) = do
-      runTI env $ do
-        s <- normalizeScheme sc
-        isSaturatedTy s
-        return (n, s)
-
     checkSigKd env sc = do
       runTI env $ do
         s <- normalizeScheme sc
@@ -119,9 +114,8 @@ checkModule m = do
 
     checkDec :: TyEnv -> [Dec] -> Result TyEnv
     checkDec e [DataD n k cons]  = do
-        let env = (n, HasKind k) : e
-        cons' <- mapM (checkCon env) cons
-        return (map (second HasType) cons' ++ env)
+      (k', tys) <- runTI e $ checkDataDec n k (map snd cons)
+      return (zip (map fst cons) (map HasType tys) ++  ((n, HasKind k') : e))
 
     checkDec env [SigD n sc, FunD _ ps e] = do
       checkSigKd env sc

@@ -3,7 +3,7 @@
 module AST ( Exp(..), Pat(..), Alt, Ty(..), Kind(..), Scheme(..)
            , Name, Subst, Term(..)
            , (.->), isFunc
-           , generalize, renameScheme, instQs
+           , generalize, renameScheme, renameKind, instQs
            ) where
 
 import Data.List as L
@@ -23,22 +23,24 @@ data Exp = Bot
          | Let Name Exp Exp
          | Ann Exp Ty
          | Case Exp [(Pat, Exp)]
-           deriving Show
+           deriving (Show, Eq)
 
 data Pat = WildP
          | VarP Name
          | ConP Name [Name]
-           deriving Show
+           deriving (Show, Eq)
 
 type Alt = (Pat, Exp)
 
-data Ty = LitT Name
-        | VarT Name
-        | AppT Ty Ty
-        | AbsT Name Ty
+data Ty = LitT  Name
+        | VarT  Name
+        | AppT  Ty Ty
+        | AppTE Ty Exp
+        | AbsT  Name Ty
           deriving (Show, Eq)
 
 data Kind = Star
+          | DatK Name
           | VarK Name
           | ArrK Kind Kind
             deriving (Eq, Show)
@@ -106,22 +108,25 @@ instance Term Ty Ty where
   freeVars (LitT _)     = S.empty
   freeVars (VarT n)     = S.singleton n
   freeVars (AppT t1 t2) = freeVars t1 <> freeVars t2
+  freeVars (AppTE t1 _) = freeVars t1
   freeVars (AbsT n t)   = S.delete n (freeVars t )
 
   subst t@(LitT _)     _ = t
   subst t@(VarT n)     s | Just t' <- lookup n s = t'
                          |       otherwise       = t
   subst   (AppT t1 t2) s = AppT (subst t1 s) (subst t2 s)
-  subst   (AbsT n t)   s = subst t ((n, var n) : s)
-    -- WARN or maybe delete _n_ from _s_?
+  subst   (AppTE t1 e) s = AppTE (subst t1 s) e
+  subst   (AbsT n t)   s = AbsT n (subst t ((n, var n) : s))
 
 instance Term Kind Kind where
   var = VarK
   freeVars  Star    = S.empty
+  freeVars (DatK _) = S.empty
   freeVars (VarK n) = S.singleton n
   freeVars (ArrK k1 k2) = freeVars k1 <> freeVars k2
 
-  subst Star _ = Star
+  subst    Star        _ = Star
+  subst k@(DatK _)     _ = k
   subst k@(VarK n)     s | Just k' <- lookup n s = k'
                          |       otherwise       = k
   subst   (ArrK k1 k2) s = ArrK (subst k1 s) (subst k2 s)
@@ -240,7 +245,7 @@ instance Pretty Ty where
                                      <+> pretty t)
         where
           lambda = green (char 'λ')
-
+      pp (AppTE t e) = parens (pretty t <+> pretty e)
       pp t = parens (pretty t)
 
       arrow = blue (text "->")
@@ -259,6 +264,7 @@ instance Pretty Kind where
 
           pp Star = cyan "*"
           pp (VarK n) = blue (text n)
+          pp (DatK n) = magenta (text n)
           pp t    = parens (pretty t)
           arrow   = green (text "->")
 
@@ -280,3 +286,9 @@ renameScheme = go [] (names ++ err)
 
       err :: forall a. a
       err = error ("more than " ++ show (length names) ++ "quanifiers? Really?")
+
+renameKind :: Kind -> Kind
+renameKind k = subst k mkMap
+  where
+    mkMap = S.toList (freeVars k) `zip` fvs
+    fvs = map (var . return) ['a'..'z']

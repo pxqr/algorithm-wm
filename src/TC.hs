@@ -30,7 +30,7 @@ inferTy e env = runTI env $ tyInfW e >>= generalizeM
 
 inferDecTy :: Name -> Exp -> TyEnv -> Result (Scheme Ty)
 inferDecTy n e env = runTI env $ withDef $
-  recDef n (tyInfW e) >>= withU . reify  >>= generalizeM
+  recDef n (tyInfW e) >>= generalizeM
 
 checkDecTy :: Name -> Exp -> Scheme Ty
               -> TyEnv -> Result (Scheme Ty)
@@ -96,6 +96,11 @@ fresh = do
 freshVar :: Term a b => Context t a
 freshVar = var <$> fresh
 
+freshPolyVar :: Term a a => Context t (Scheme a)
+freshPolyVar = do
+  n <- fresh
+  return (Poly n (var n))
+
 freshInst :: Term a a => Scheme a -> Context t a
 freshInst = go []
   where
@@ -138,7 +143,7 @@ lookupName es n = do
     Nothing -> throwError (UnboundE n es)
     Just info -> return info
 
-lookupVar :: [Exp] -> Name -> Context t (Scheme Ty)
+lookupVar :: [Exp] -> Name -> Context Ty (Scheme Ty)
 lookupVar es n = do
   info <- lookupName es n
   case info of
@@ -152,22 +157,25 @@ lookupTyLit n = do
     HasKind k  -> return k
     _          -> throwError (UnboundE n [])
 
-lookupTyVar :: Name -> Context t Kind
-lookupTyVar = lookupTyLit
+lookupTyVar :: Name -> Context Kind Kind
+lookupTyVar n = do
+  k <- lookupTyLit n
+  withUKd $ reify k
 
 applyTy :: Ty -> Ty -> Context Ty Ty
 applyTy t1 t2 = do
   f  <- freshVar
   withU $ do
     t1' <- reify t1
-    unify (t2 .-> f) t1'
+    t2' <- reify t2
+    unify (t2' .-> f) t1'
     reify f
 
 recDef :: Name -> Context Ty Ty -> Context Ty Ty
 recDef n c = do
   t <- freshVar
   t' <- bindLocal n (Mono t) c -- TODO
-  withU $ unify t t' >> reify t'
+  withU $ reify t'
 
 
 unifyMany :: [Ty] -> Context Ty Ty
@@ -272,6 +280,9 @@ tyInfW = tyInf []
 
 type TyVarEnv = Subst Kind
 
+kdInfTy :: Exp -> Context Kind Kind
+kdInfTy e = return (DatK "Nat")
+
 kdInf :: Ty -> Context Kind Kind
 kdInf (LitT n) = lookupTyLit n
 kdInf (VarT n) = lookupTyVar n
@@ -282,6 +293,15 @@ kdInf (AppT t1 t2) = do
   withUKd $ do
     unifyKd k1 (k2 `ArrK` k)
     reify k
+
+kdInf (AppTE t e) = do
+  k1 <- kdInf t
+  k2 <- kdInfTy e
+  k  <- freshVar
+  withUKd $ do
+    unifyKd k1 (k2 `ArrK` k)
+    reify k
+
 
 kdInf (AbsT n t) = do
   k  <- freshVar
@@ -307,3 +327,30 @@ normalizeScheme = freshInst >=> generalizeM
 
 isSaturatedTy :: Scheme Ty -> Context Kind ()
 isSaturatedTy sc = bindKinds sc (`kdChk` Star)
+
+
+checkDataDec :: Name -> Maybe Kind -> [Scheme Ty] -> Context Kind (Kind, [Scheme Ty])
+checkDataDec dn mk _scs = do
+    kann <- maybe freshVar return mk
+    (ka, scs) <- checkConstrs kann _scs
+    case mk of
+      Nothing -> return (renameKind ka, scs)
+      Just ke -> do
+        mspec <- withUKd $ ka *||= ke
+        unless mspec $ do
+          throwError (KindMismatchE ke ka (var "data kind annotation"))
+        return (ke, scs)
+  where
+    checkConstrs :: Kind -> [Scheme Ty] -> Context Kind (Kind, [Scheme Ty])
+    checkConstrs k [] = return (k, [])
+    checkConstrs k (x : xs) = do
+      (k', s)  <- checkConstr k x
+      (k'', ss) <- checkConstrs k' xs
+      return (k'', s : ss)
+
+    checkConstr k sc = do
+      bindLocalKd dn k $ do
+        s <- normalizeScheme sc
+        isSaturatedTy s
+        k' <- withUKd (reify k)
+        return (k', s)

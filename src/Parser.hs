@@ -2,7 +2,7 @@ module Parser
        ( parseFile
 
        -- * for REPL
-       , nameP, expP, patP, tyP, kindP, parseTy, inRepl
+       , nameP, expP, patP, tyP, kindP, decP, parseTy, inRepl
        ) where
 
 import Control.Applicative hiding (many, (<|>))
@@ -32,12 +32,29 @@ strKeywords = [ "let",  "in", "end"
               ]
 
 opKeywords :: [String]
-opKeywords = ["[", "]", ".", "=", ":", "\\", "_"]
+opKeywords = ["[", "]", ".", "=", ":", "\\", "_", "!"]
 
 operatorChars :: String
 operatorChars = "+-*/<>="
 
-type PEnv = Map Name SourcePos
+type Scope = Map Name SourcePos
+
+data PEnv = PEnv {
+    envConstr :: Scope
+  , envData   :: Scope
+  }
+
+emptyEnv :: PEnv
+emptyEnv = PEnv M.empty M.empty
+
+type ScopeSelector = (PEnv -> Scope, PEnv -> Scope -> PEnv)
+
+constrScope :: ScopeSelector
+constrScope = (envConstr, \e s -> e { envConstr = s } )
+
+dataScope :: ScopeSelector
+dataScope = (envData, \e s -> e { envData = s })
+
 type St = StateT SourcePos Identity
 
 type LangDef   = GenLanguageDef String PEnv St
@@ -72,25 +89,39 @@ op = reservedOp tok
 nameP :: Parser Name
 nameP = identifier tok
 
-boundedName :: Parser Name
-boundedName = do
-  n   <- identifier tok
-  env <- getState
-  when (isNothing (M.lookup n env)) $ do
-    fail $ "Not in scope: " ++ n ++ "\n" ++
-           "Did you mean TODO"
+defined :: Parser Name -> ScopeSelector -> Parser Name
+defined p f = do
+  n     <- p
+  scope <- fst f <$> getState
+  when (isNothing (M.lookup n scope)) $ do
+    fail $ "Not in scope: \"" ++ n ++ "\", did you mean: "
+        ++ L.intercalate ", " (L.map fst (M.toList scope))
   return n
 
-newName :: Parser Name
-newName = do
-  pos <- getPosition
-  n   <- identifier tok
-  env <- getState
-  case M.lookup n env of
-    Just npos -> fail $ "Already defined at: " ++ show npos
+newName :: Parser Name -> ScopeSelector -> Parser Name
+newName p s = do
+  pos   <- getPosition
+  n     <- p
+  env   <- getState
+  let scope = fst s env
+  case M.lookup n scope of
+    Just npos -> unexpected $ n ++ " is already defined at: " ++ show npos
     Nothing -> do
-      setState (M.insert n pos env)
+      setState (snd s env (M.insert n pos scope))
       return n
+
+lowercase :: Parser Name
+lowercase = do
+  n <- nameP
+  when (isUpper (head n)) $ fail "not a upcase name"
+  return n
+
+upcase :: Parser Name
+upcase = do
+  n <- nameP
+  when (isLower (head n)) $ fail "not a lowercase name"
+  return n
+
 
 newOp :: Parser Name
 newOp = parens tok (some (oneOf operatorChars))
@@ -107,13 +138,13 @@ blockPrec :: String -> [Parser a] -> Parser [a]
 blockPrec msg bs = block (choice (fmap try bs)) <?> msg
 
 conP :: Parser Name
-conP = tyLitP
+conP = upcase
 
 patVarP :: Parser Name
-patVarP = tyVarP
+patVarP = lowercase
 
 patConP :: Parser Name
-patConP = tyLitP
+patConP = upcase
 
 patPairP :: Parser (Name, Name)
 patPairP = (,) <$> (op "(" *> patVarP)
@@ -191,28 +222,22 @@ instance Expr Exp where
              , pairC <$> pairP
              , listC <$> listP
              , Var  <$> varP
-             , ConE <$> conP
+             , ConE <$> (conP `defined` constrScope)
              , Let  <$> (sym "let" *> nameP)
                     <*> (sym "="   *> expr)
                     <*> (sym "in"  *> withPos expr <* sym "end")
              , Case <$> (sym "case" *> expr)
                     <*> (sym "of"   *> block altP)
              , Abs  <$> (op  "\\"   *> varP)
-               <*> (op  "."    *> expr)
+                    <*> (op  "."    *> expr)
              ]
 
 
 tyLitP :: Parser Name
-tyLitP = do
-  n <- nameP
-  when (isLower (head n)) $ fail "not a ty lit"
-  return n
+tyLitP = upcase `defined` dataScope
 
 tyVarP :: Parser Name
-tyVarP = do
-  n <- nameP
-  when (isUpper (head n)) $ fail "not a ty var"
-  return n
+tyVarP = lowercase
 
 modNameP :: Parser ModName
 modNameP = ModName <$> nameP
@@ -228,31 +253,53 @@ pairTyP = (AppT . AppT (LitT "Pair"))
 listTyP :: Parser Ty
 listTyP = AppT (LitT "List") <$> (op "[" *> expr <* op "]")
 
+{-
+braces :: Parser a -> Parser a
+braces =
+-}
 
 instance Expr Ty where
-  expr = exprPrec "type"
+  expr = do
+    exprPrec "type"
       [ [Infix (op "->" >> return (.->)) AssocRight] ]
       [apps]
-
    where
-    apps = fmap (L.foldl1 AppT) $ some $ do
-             sameOrIndented
-             exprPrec "type" []
-               [ LitT <$> tyLitP
-               , VarT <$> tyVarP
-               , AbsT <$> (op "\\" *> tyVarP)
-                      <*> (op "."  *> expr)
-               , unitTyP
-               , pairTyP
-               , listTyP
-               ]
+    apps = do
+      t  <- term
+      ts <- many $ try (Right <$> term)
+               <|> Left  <$> (optional (op "!") >> expr)
+      return $ L.foldl mkApp t ts
+
+    mkApp t1 (Left e)   = AppTE t1 e
+    mkApp t1 (Right t2) = AppT t1 t2
+
+    term = do
+      sameOrIndented
+      exprPrec "type" []
+        [ LitT <$> tyLitP
+        , VarT <$> tyVarP
+        , AbsT <$> (op "\\" *> tyVarP)
+               <*> (op "."  *> expr)
+        , unitTyP
+        , pairTyP
+        , listTyP
+        ]
+
+
+
+kdDatP :: Parser Name
+kdDatP = upcase `defined` dataScope
+
+kdVarP :: Parser Name
+kdVarP = tyVarP
 
 instance Expr Kind where
   expr = exprPrec "kind"
     [ [Infix (op "->" >> return ArrK) AssocRight]
     ]
     [ Star <$  op "*"
-    , VarK <$> nameP
+    , DatK <$> kdDatP
+    , VarK <$> kdVarP
     ]
 
 instance Expr a => Expr (Scheme a) where
@@ -261,19 +308,26 @@ instance Expr a => Expr (Scheme a) where
     , Mono <$> expr
     ]
 
-funBody :: Parser Exp
-funBody = expr
+newConP :: Parser Exp
+newConP = undefined
 
 instance Expr Dec where
   expr = exprPrec "declaration" []
-    [ SigD  <$> (nameP <*  op ":") <*> (indented >> schemeP)
-    , (FunD  <$>  nameP <*> (many nameP <* op "=")) <+/> funBody
-    , DataD <$> (sym "data" *> nameP)
-            <*> (op  ":"    *> (indented >> expr))
-            <*> (try (sym "where" *> block consP) <|> pure [])
+    [  SigD  <$> (nameP <*  op ":")
+             <*> (indented >> expr)
+    , (FunD  <$>  nameP
+             <*> (many nameP <* op "="))
+             <+/> expr
+    ,  DataD <$> (sym "data" *> (upcase `newName` dataScope))
+             <*> optional (op  ":"    *> (indented >> expr))
+             <*> (fromMaybe [] <$> optional (sym "where" *> block consP))
     ]
    where
-     consP = (,) <$> (try nameP <|> newOp) <*> (op ":" *> expr)
+     consP = withPos $ do
+       n <- newName nameP constrScope
+       op ":"
+       t <- expr
+       return (n, t)
 
 
 importP :: Parser ModName
@@ -304,6 +358,9 @@ kindP = expr
 schemeP :: Parser (Scheme Ty)
 schemeP = expr
 
+decP :: Parser Dec
+decP = expr
+
 moduleP :: Parser Module
 moduleP = expr
 
@@ -313,14 +370,14 @@ fileP = whiteSpace tok *> moduleP <* eof
 parseFile :: String -> IO (Either ParseError Module)
 parseFile path = do
   src <- readFile path
-  return (runIndent path (runParserT fileP M.empty path src))
+  return (runIndent path (runParserT fileP emptyEnv path src))
 
 
 inRepl :: Parser a -> S.Parser a
 inRepl p = do
   s <- many anyChar <* eof
   let path = ":interactive:"
-  let res  = runIndent path (runParserT (withPos p <* eof) M.empty path s)
+  let res  = runIndent path (runParserT (withPos p <* eof) emptyEnv path s)
   case res of
     Left e  -> fail (show e)
     Right r -> return r

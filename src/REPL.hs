@@ -139,7 +139,7 @@ ppTyEnv :: TyEnv -> Doc
 ppTyEnv = PP.vsep . map pretty . reverse . mapMaybe mkBind
     where
       mkBind (n, HasType ty) = Just (SigD n ty)
-      mkBind (n, HasKind kd) = Just (DataD n kd [])
+      mkBind (n, HasKind kd) = Just (DataD n (Just kd) [])
 
 {-
 traceEnvUp :: Context t TyEnv
